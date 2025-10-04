@@ -10,17 +10,11 @@ export class EnergyRegulator {
 
   consumeEnergy(amount: number): void {
     this.energy = Math.max(this.minEnergy, this.energy - amount);
-    console.log(`⚡ Energy consumed: ${amount}, current: ${this.energy} (${this.getStatus()})`);
   }
 
   replenishEnergy(seconds: number): void {
     const oldEnergy = this.energy;
     this.energy = Math.min(this.maxEnergy, this.energy + (seconds * this.replenishRate));
-
-    // Only log significant changes or when energy was low
-    if (oldEnergy < 80 || this.energy !== oldEnergy) {
-      console.log(`🔋 Energy: ${oldEnergy} → ${this.energy} (${this.getStatus()})`);
-    }
   }
 
   isDepleted(): boolean {

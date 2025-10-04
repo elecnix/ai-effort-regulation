@@ -142,7 +142,7 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
 
   private async performInference(message: Message, urgent: boolean) {
     try {
-      const energyConsumption = this.currentModel.includes('3b') ? 5 : 15; // Matches spec: Gemma 3B: 5, 8B: 15
+      const energyConsumption = this.getEnergyConsumption(this.currentModel);
       this.energyRegulator.consumeEnergy(energyConsumption);
 
       // Get conversation-specific history for context
@@ -175,7 +175,7 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
       // Use tool to respond
       await respond(message.id, message.content, response, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
 
-      console.log(`💬 Processed: "${message.content.substring(0, 30)}..."`);
+      console.log(`💬 Processed: "${this.truncateText(message.content, 30)}..."`);
 
     } catch (error) {
       console.error(`❌ Inference error for message ${message.id} (Energy: ${this.energyRegulator.getEnergy()}):`, error);
@@ -260,6 +260,10 @@ CONTENT: [your response/thought/content]`;
 
       const llmResponse = await generateResponse(messages, this.currentModel, false);
 
+      // Consume energy for thinking (same as inference)
+      const energyConsumption = this.getEnergyConsumption(this.currentModel);
+      this.energyRegulator.consumeEnergy(energyConsumption);
+
       // Parse LLM decision and show concise result
       await this.executeLLMDecision(llmResponse);
 
@@ -300,8 +304,8 @@ CONTENT: [your response/thought/content]`;
       };
 
       if (!actionMatch) {
-        // Default to internal thought - show first 100 chars
-        const thought = llmResponse.substring(0, 100) + (llmResponse.length > 100 ? '...' : '');
+        // Default to internal thought - show first 200 chars
+        const thought = this.truncateText(llmResponse);
         const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
         console.log(`${indicator} Thought: "${thought}"`);
         return;
@@ -311,7 +315,7 @@ CONTENT: [your response/thought/content]`;
 
       if (!action) {
         const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-        console.log(`${indicator} Thought: "${llmResponse.substring(0, 200)}..."`);
+        console.log(`${indicator} Thought: "${this.truncateText(llmResponse)}..."`);
         return;
       }
 
@@ -321,7 +325,7 @@ CONTENT: [your response/thought/content]`;
       switch (action) {
         case 'GENERATE_THOUGHT':
           // Show first 200 characters of the thought
-          const thought = content.substring(0, 200) + (content.length > 200 ? '...' : '');
+          const thought = this.truncateText(content);
           const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
           console.log(`${indicator} Thought: "${thought}"`);
           break;
@@ -330,11 +334,11 @@ CONTENT: [your response/thought/content]`;
           if (target && target.toLowerCase() !== 'none') {
             await respond(target, 'PLACEHOLDER', `FOLLOW-UP REFLECTION: ${content}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
           }
-          console.log(`🔍 Reflection: ${content.substring(0, 200)}...`);
+          console.log(`🔍 Reflection: ${this.truncateText(content)}...`);
           break;
 
         case 'MAKE_TOOL_CALL':
-          console.log(`🔧 Tool request: "${content.substring(0, 200)}..."`);
+          console.log(`🔧 Tool request: "${this.truncateText(content)}..."`);
           break;
 
         case 'NO_ACTION':
@@ -343,7 +347,7 @@ CONTENT: [your response/thought/content]`;
 
         default:
           // If LLM chooses an invalid action, treat it as a thought
-          const fallbackThought = content.substring(0, 200) + (content.length > 200 ? '...' : '');
+          const fallbackThought = this.truncateText(content);
           const indicatorFallback = getEnergyIndicator(this.energyRegulator.getEnergy());
           console.log(`${indicatorFallback} Thought: "${fallbackThought}"`);
       }
@@ -459,6 +463,16 @@ CONTENT: [your response/thought/content]`;
       this.currentModel = 'gemma:3b';
       this.modelSwitches++;
     }
+  }
+
+  private getEnergyConsumption(model: string): number {
+    // Energy consumption based on model size
+    // TODO: Eventually use token count or GPU utilization
+    return model.includes('3b') ? 5 : 15;
+  }
+
+  private truncateText(text: string, maxLength: number = 200): string {
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
   }
 }
 
