@@ -127,8 +127,20 @@ export function getConversationStats() {
   }
 }
 
-// Graceful shutdown
-process.on('exit', () => db.close());
-process.on('SIGHUP', () => process.exit(128 + 1));
-process.on('SIGINT', () => process.exit(128 + 2));
-process.on('SIGTERM', () => process.exit(128 + 15));
+// Add function to get recent conversation IDs for reflection
+export function getRecentConversationIds(limit: number = 10): string[] {
+  try {
+    const stmt = db.prepare(`
+      SELECT request_id
+      FROM conversations
+      ORDER BY created_at DESC
+      LIMIT ?
+    `);
+
+    const rows = stmt.all(limit) as { request_id: string }[];
+    return rows.map(row => row.request_id);
+  } catch (error) {
+    console.error('Error getting recent conversation IDs:', error);
+    return [];
+  }
+}
