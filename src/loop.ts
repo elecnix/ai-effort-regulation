@@ -19,9 +19,9 @@ export class SensitiveLoop {
   private isRunning = false;
   private modelSwitches = 0;
   private lastReflectionTime = Date.now();
-  private reflectionInterval = 30000; // Reflect every 30 seconds
+  private reflectionInterval = 30000; // Minimum interval between reflections (anti-spam)
   private lastInternalThought = Date.now();
-  private internalThoughtInterval = 45000; // Internal thoughts every 45 seconds
+  private internalThoughtInterval = 45000; // Minimum interval between internal thoughts (anti-spam)
 
   constructor() {
     // Initialize with system prompt
@@ -90,34 +90,28 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           const sleepTime = this.energyRegulator.getEnergy() < 0 ? 5 : 10; // Minimal cycles in urgent mode
           await this.sleep(sleepTime);
         } else {
-          // Prioritize actions based on energy level and timing
-          const now = Date.now();
+          // Pure energy-based decision making (no time throttling)
           const energy = this.energyRegulator.getEnergy();
+          const now = Date.now();
 
-          // High energy (>80): Always prefer thinking activities
+          // High energy (>80): Always think, but alternate activities with minimum intervals
           if (energy > 80) {
-            const timeSinceReflection = now - this.lastReflectionTime;
-            const timeSinceInternalThought = now - this.lastInternalThought;
+            const canReflect = now - this.lastReflectionTime >= this.reflectionInterval;
+            const canThinkInternally = now - this.lastInternalThought >= this.internalThoughtInterval;
 
-            // Alternate between reflection and internal thoughts when energy is high
-            if (timeSinceReflection >= this.reflectionInterval && timeSinceInternalThought >= this.internalThoughtInterval) {
-              // Both are ready - prefer internal thoughts for continuous development
+            // Prioritize internal thoughts for continuous development, fallback to reflection
+            if (canThinkInternally) {
               await this.generateInternalThought();
               this.lastInternalThought = now;
-            } else if (timeSinceInternalThought >= this.internalThoughtInterval) {
-              // Internal thoughts are ready
-              await this.generateInternalThought();
-              this.lastInternalThought = now;
-            } else if (timeSinceReflection >= this.reflectionInterval) {
-              // Reflection is ready
+            } else if (canReflect) {
               await this.performReflection();
               this.lastReflectionTime = now;
             } else {
-              // Both on cooldown but energy is high - do whichever has less remaining time
-              const reflectionRemaining = this.reflectionInterval - timeSinceReflection;
-              const internalRemaining = this.internalThoughtInterval - timeSinceInternalThought;
+              // Both on minimum cooldown - do whichever expires sooner
+              const reflectionWait = this.reflectionInterval - (now - this.lastReflectionTime);
+              const internalWait = this.internalThoughtInterval - (now - this.lastInternalThought);
 
-              if (reflectionRemaining < internalRemaining) {
+              if (reflectionWait <= internalWait) {
                 await this.performReflection();
                 this.lastReflectionTime = now;
               } else {
@@ -126,33 +120,58 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
               }
             }
           }
-          // Medium energy (40-80): Check timing requirements
-          else if (energy > 40) {
-            const shouldReflect = now - this.lastReflectionTime > this.reflectionInterval;
-            const shouldThinkInternally = now - this.lastInternalThought > this.internalThoughtInterval;
+          // Medium-high energy (60-80): Think when possible, but more conservative
+          else if (energy > 60) {
+            const canReflect = now - this.lastReflectionTime >= this.reflectionInterval;
+            const canThinkInternally = now - this.lastInternalThought >= this.internalThoughtInterval;
 
-            if (shouldThinkInternally) {
-              await this.generateInternalThought();
-              this.lastInternalThought = now;
-            } else if (shouldReflect) {
-              await this.performReflection();
-              this.lastReflectionTime = now;
+            if (canThinkInternally || canReflect) {
+              if (canThinkInternally && (!canReflect || Math.random() < 0.6)) {
+                // Prefer internal thoughts 60% of the time when both available
+                await this.generateInternalThought();
+                this.lastInternalThought = now;
+              } else if (canReflect) {
+                await this.performReflection();
+                this.lastReflectionTime = now;
+              }
             } else {
-              // Energy medium, both on cooldown - short sleep
               await this.sleep(1);
             }
           }
-          // Low energy (30-40): Only reflect if timing allows
-          else if (energy > 30) {
-            if (now - this.lastReflectionTime > this.reflectionInterval) {
+          // Medium energy (40-60): Only think when really needed
+          else if (energy > 40) {
+            const canReflect = now - this.lastReflectionTime >= this.reflectionInterval;
+
+            if (canReflect && this.shouldReflectBasedOnConversations()) {
               await this.performReflection();
               this.lastReflectionTime = now;
             } else {
               await this.sleep(1);
             }
-          } else {
-            // Very low energy - sleep to recover
-            await this.sleep(2);
+          }
+          // Low-medium energy (20-40): Minimal thinking
+          else if (energy > 20) {
+            const canReflect = now - this.lastReflectionTime >= this.reflectionInterval;
+
+            if (canReflect && this.hasUrgentConversations()) {
+              await this.performReflection();
+              this.lastReflectionTime = now;
+            } else {
+              await this.sleep(2);
+            }
+          }
+          // Low energy (0-20): Only urgent thinking
+          else if (energy > 0) {
+            if (this.hasCriticalConversations() && now - this.lastReflectionTime >= this.reflectionInterval) {
+              await this.performReflection();
+              this.lastReflectionTime = now;
+            } else {
+              await this.sleep(3);
+            }
+          }
+          // Very low energy (<0): Sleep to recover
+          else {
+            await this.sleep(5);
           }
         }
 
@@ -396,6 +415,70 @@ Based on these thoughts and interactions, generate a new internal thought. This 
     // Build context for reflection
     const responses = conversation.responses.slice(-2); // Last 2 responses for context
     return responses.map((r: any) => `[${r.timestamp}] ${r.content}`).join('\n');
+  }
+
+  private shouldReflectBasedOnConversations(): boolean {
+    try {
+      const stats = getConversationStats();
+      if (!stats || stats.total_conversations === 0) return false;
+
+      // Reflect if we have conversations with complex topics or recent activity
+      const recentConversations = this.getRecentConversationIds();
+      for (const convId of recentConversations.slice(0, 5)) {
+        const conversation = getConversation(convId);
+        if (conversation && this.analyzeConversationForFollowUp(conversation)) {
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking reflection need:', error);
+      return false;
+    }
+  }
+
+  private hasUrgentConversations(): boolean {
+    try {
+      const recentConversations = this.getRecentConversationIds();
+      for (const convId of recentConversations.slice(0, 3)) {
+        const conversation = getConversation(convId);
+        if (conversation && conversation.responses.length > 0) {
+          const lastResponse = conversation.responses[conversation.responses.length - 1];
+          // Urgent if response is very short (might need more depth) or contains urgent topics
+          const isVeryShort = lastResponse.content.length < 100;
+          const hasUrgentTopics = /error|problem|issue|urgent|critical/i.test(lastResponse.content);
+          if (isVeryShort || hasUrgentTopics) {
+            return true;
+          }
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking urgent conversations:', error);
+      return false;
+    }
+  }
+
+  private hasCriticalConversations(): boolean {
+    try {
+      const recentConversations = this.getRecentConversationIds();
+      for (const convId of recentConversations.slice(0, 2)) {
+        const conversation = getConversation(convId);
+        if (conversation && conversation.responses.length > 0) {
+          const lastResponse = conversation.responses[conversation.responses.length - 1];
+          // Critical if very short responses or error-related content
+          const isExtremelyShort = lastResponse.content.length < 50;
+          const hasErrors = /error|fail|problem|issue|bug|crash/i.test(lastResponse.content);
+          if (isExtremelyShort || hasErrors) {
+            return true;
+          }
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking critical conversations:', error);
+      return false;
+    }
   }
 
   private switchToSmallerModel() {
