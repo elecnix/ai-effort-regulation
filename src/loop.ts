@@ -367,19 +367,15 @@ Based on these thoughts and interactions, generate a new internal thought. This 
 
       const internalThought = await generateResponse(thoughtMessages, this.currentModel, false);
 
-      // Add to internal monologue
+      // Print to console instead of storing in database
+      console.log(`🤔 INTERNAL THOUGHT: ${internalThought}`);
+
+      // Keep track of thought count for monitoring (but don't store content)
       this.internalMonologue.push({
-        thought: internalThought,
+        thought: '', // Empty content - not stored
         timestamp: new Date(),
         energyLevel: this.energyRegulator.getEnergy()
       });
-
-      // Keep monologue manageable (last 20 thoughts)
-      if (this.internalMonologue.length > 20) {
-        this.internalMonologue = this.internalMonologue.slice(-20);
-      }
-
-      console.log(`Internal thought generated: "${internalThought.substring(0, 100)}${internalThought.length > 100 ? '...' : ''}"`);
 
     } catch (error) {
       console.error('Error generating internal thought:', error);

@@ -59,13 +59,18 @@ app.get('/stats', (req, res) => {
   res.json(stats || { error: 'Could not retrieve statistics' });
 });
 
-// Add endpoint to view internal monologue
+// Add endpoint to view internal thought metadata (not content)
 app.get('/internal-thoughts', (req, res) => {
-  // Get the sensitive loop instance to access internal monologue
+  // Get the sensitive loop instance to access internal thought metadata
   const thoughts = (global as any).sensitiveLoop?.internalMonologue || [];
   res.json({
-    thoughts: thoughts.slice(-10), // Last 10 thoughts
-    totalThoughts: thoughts.length
+    thoughtCount: thoughts.length,
+    recentThoughts: thoughts.slice(-5).map((thought: any) => ({
+      timestamp: thought.timestamp,
+      energyLevel: thought.energyLevel,
+      // Note: actual thought content is not stored, only printed to console
+    })),
+    note: 'Internal thoughts are printed to console logs with 🤔 emoji, not stored in database'
   });
 });
 
