@@ -66,20 +66,20 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           for (const message of newMessages) {
             if (energy > 50) {
               // Normal operation - can perform complex tasks
-              await this.performInference(message.id, false);
+              await this.performInference(message, false);
             } else if (energy > 20) {
               // Medium energy - consider simpler tasks or model switch
               // Switch to smaller model if not already using it
               if (!this.currentModel.includes('3b')) {
                 this.switchToSmallerModel();
               }
-              await this.performInference(message.id, false);
+              await this.performInference(message, false);
             } else if (energy > 0) {
               // Low energy - short cycles for urgent tasks
-              await this.performInference(message.id, false);
+              await this.performInference(message, false);
             } else {
               // Urgent mode - sleep in minimal cycles, use pressing tone
-              await this.performInference(message.id, true); // urgent=true for pressing tone
+              await this.performInference(message, true); // urgent=true for pressing tone
             }
           }
         } else if (this.energyRegulator.isDepleted()) {
@@ -119,38 +119,83 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
     this.history.push(entry);
   }
 
-  private async performInference(requestId: string, urgent: boolean) {
+  private async performInference(message: Message, urgent: boolean) {
     try {
       const energyConsumption = this.currentModel.includes('3b') ? 5 : 15; // Matches spec: Gemma 3B: 5, 8B: 15
       this.energyRegulator.consumeEnergy(energyConsumption);
 
-      // Get recent history for context
-      const context = this.history.slice(-5).map(h => ({
-        role: h.role,
-        content: h.content
-      }));
+      // Get conversation-specific history for context
+      const conversationHistory = this.getConversationHistory(message.id);
 
-      const response = await generateResponse(context, this.currentModel, urgent);
+      // Add the current user message to history
+      conversationHistory.push({
+        role: 'user',
+        content: message.content
+      });
 
-      // Add response to history
+      // Add current energy status as ephemeral message
+      const energyStatus = `Current energy level: ${this.energyRegulator.getEnergy()} (${this.energyRegulator.getStatus()})`;
+      conversationHistory.push({
+        role: 'system',
+        content: energyStatus
+      });
+
+      const response = await generateResponse(conversationHistory, this.currentModel, urgent);
+
+      // Add response to global history
       this.addToHistory({
         role: 'assistant',
         content: response,
         timestamp: new Date(),
         energyLevel: this.energyRegulator.getEnergy(),
-        requestId
+        requestId: message.id
       });
 
       // Use tool to respond
-      await respond(requestId, response, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
+      await respond(message.id, message.content, response, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
 
     } catch (error) {
       console.error('Inference error:', error);
     }
   }
 
+  private getConversationHistory(requestId: string): Array<{ role: string; content: string }> {
+    // Load the full conversation history from database
+    const conversation = getConversation(requestId);
+
+    if (!conversation || !conversation.responses) {
+      return [];
+    }
+
+    // Convert database format to the format expected by generateResponse
+    const history: Array<{ role: string; content: string }> = [];
+
+    // Add the original user message
+    if (conversation.inputMessage && conversation.inputMessage !== 'Input message to be populated') {
+      history.push({
+        role: 'user',
+        content: conversation.inputMessage
+      });
+    }
+
+    // Add all previous responses
+    for (const response of conversation.responses) {
+      // Add the user message that prompted this response (if available)
+      // For now, we'll reconstruct based on the response content
+      // In a more sophisticated system, we'd store the exact user message
+
+      // Add the assistant response
+      history.push({
+        role: 'assistant',
+        content: response.content
+      });
+    }
+
+    return history;
+  }
+
   private async sleep(seconds: number) {
-    console.log(`Sleeping for ${seconds} seconds to replenish energy`);
+    //console.debug(`Sleeping for ${seconds} seconds to replenish energy`);
     await new Promise(resolve => setTimeout(resolve, seconds * 1000));
     this.energyRegulator.replenishEnergy(seconds);
   }

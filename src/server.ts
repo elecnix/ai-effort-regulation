@@ -1,7 +1,7 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { sensitiveLoop } from './loop';
-import { getConversation, getConversationStats } from './tools';
+import { getConversation, getConversationStats, respond } from './tools';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -11,7 +11,7 @@ app.use(express.json());
 // Message queue for the sensitive loop
 export interface Message {
   id: string;
-  content: string;
+  content: string;  // user message
   timestamp: Date;
 }
 
@@ -31,7 +31,7 @@ app.post('/message', (req, res) => {
     timestamp: new Date()
   };
 
-  // Add to message queue for the loop
+  // Add to message queue for the loop (loop will handle storing user message and generating response)
   messageQueue.push(message);
 
   console.log(`Received message: ${messageId} - ${content}`);

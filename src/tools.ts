@@ -48,22 +48,27 @@ const insertResponseStmt = db.prepare(`
   VALUES (?, ?, ?, ?)
 `);
 
-export function respond(requestId: string, content: string, energyLevel: number, modelUsed: string, modelSwitches: number) {
+export function respond(requestId: string, userMessage: string, response: string, energyLevel: number, modelUsed: string, modelSwitches: number) {
   try {
     // Get or create conversation
     let conversation = getConversationStmt.get(requestId) as any;
 
     if (!conversation) {
       // Create new conversation
-      const insertResult = insertConversationStmt.run(requestId, 'Input message to be populated');
+      const insertResult = insertConversationStmt.run(requestId, userMessage);
       conversation = {
         id: insertResult.lastInsertRowid,
         request_id: requestId
       };
+    } else if (userMessage) {
+      // Update the input message if provided and different
+      db.prepare('UPDATE conversations SET input_message = ? WHERE id = ?').run(userMessage, conversation.id);
     }
 
-    // Add response
-    insertResponseStmt.run(conversation.id, content, energyLevel, modelUsed);
+    // Add response only if provided
+    if (response) {
+      insertResponseStmt.run(conversation.id, response, energyLevel, modelUsed);
+    }
 
     // Update metadata
     updateConversationStmt.run(modelSwitches, requestId);

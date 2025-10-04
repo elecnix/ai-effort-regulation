@@ -16,7 +16,7 @@ export class EnergyRegulator {
   replenishEnergy(seconds: number): void {
     const replenish = seconds * this.replenishRate;
     this.energy = Math.min(this.maxEnergy, this.energy + replenish);
-    console.log(`Energy replenished: ${replenish}, current: ${this.energy}`);
+    console.debug(`Energy replenished: ${replenish}, current: ${this.energy}`);
   }
 
   isDepleted(): boolean {
