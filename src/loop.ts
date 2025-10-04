@@ -299,11 +299,10 @@ Please provide additional insights, follow-up thoughts, or deeper analysis on th
 You are an AI with full cognitive agency. Based on your conversation history above, decide what action to take:
 
 AVAILABLE ACTIONS:
-1. RESPOND_TO_MESSAGE: Choose a pending message and provide a thoughtful response
-2. GENERATE_THOUGHT: Create an internal thought exploring ideas or connections
-3. REFLECT_ON_CONVERSATIONS: Analyze past conversations and provide insights
-4. MAKE_TOOL_CALL: Use a tool to perform an action (like checking stats)
-5. NO_ACTION: If nothing needs to be done right now
+1. GENERATE_THOUGHT: Create an internal thought exploring ideas or connections
+2. REFLECT_ON_CONVERSATIONS: Analyze past conversations and provide insights
+3. MAKE_TOOL_CALL: Use a tool to perform an action (like checking stats)
+4. NO_ACTION: If nothing needs to be done right now
 
 Choose ONE action and provide:
 - Action type
@@ -368,16 +367,9 @@ CONTENT: [your response/thought/content]`;
       const content = contentMatch ? contentMatch[1].trim() : llmResponse;
 
       switch (action) {
-        case 'RESPOND_TO_MESSAGE':
-          if (target && target !== 'none') {
-            await respond(target, 'PLACEHOLDER', content, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
-            console.log(`💬 Responded to: "${target}"`);
-          }
-          break;
-
         case 'GENERATE_THOUGHT':
-          // Show first 100 characters of the thought
-          const thought = content.substring(0, 100) + (content.length > 100 ? '...' : '');
+          // Show first 200 characters of the thought
+          const thought = content.substring(0, 200) + (content.length > 200 ? '...' : '');
           console.log(`🤔 Thought: "${thought}"`);
           break;
 
@@ -386,12 +378,12 @@ CONTENT: [your response/thought/content]`;
             await respond(target, `FOLLOW-UP REFLECTION: ${content}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
             console.log(`🔍 Reflected on: "${target}"`);
           } else {
-            console.log(`🔍 General reflection: "${content.substring(0, 80)}..."`);
+            console.log(`🔍 General reflection completed`);
           }
           break;
 
         case 'MAKE_TOOL_CALL':
-          console.log(`🔧 Tool request: "${content.substring(0, 80)}..."`);
+          console.log(`🔧 Tool request: "${content.substring(0, 200)}..."`);
           break;
 
         case 'NO_ACTION':
