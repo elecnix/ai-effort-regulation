@@ -10,7 +10,7 @@ export class EnergyRegulator {
 
   consumeEnergy(amount: number): void {
     this.energy = Math.max(this.minEnergy, this.energy - amount);
-    console.log(`Energy consumed: ${amount}, current: ${this.energy}`);
+    console.log(`⚡ Energy consumed: ${amount}, current: ${this.energy} (${this.getStatus()})`);
   }
 
   replenishEnergy(seconds: number): void {

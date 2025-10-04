@@ -34,7 +34,7 @@ app.post('/message', (req, res) => {
   // Add to message queue for the loop (loop will handle storing user message and generating response)
   messageQueue.push(message);
 
-  console.log(`Received message: ${messageId} - ${content}`);
+  console.log(`📨 Received message: ${messageId} - "${content}"`);
 
   res.json({
     status: 'received',
