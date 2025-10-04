@@ -6,8 +6,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
-    "watch": "nodemon --exec ts-node src/index.ts"
+    "dev": "tsc && node dist/index.js",
+    "check-build": "npm run build && echo '✅ Build successful!'",
+    "pre-commit": "npm run check-build"
   },
   "keywords": [
     "ai",
