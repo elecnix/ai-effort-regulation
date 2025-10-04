@@ -408,6 +408,7 @@ CONTENT: [your response/thought/content]`;
     } catch (error: any) {
       console.error(`❌ Decision error:`, error?.message || error);
     }
+  }
 
   private getRecentConversationIds(): string[] {
     try {
