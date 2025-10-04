@@ -1,47 +1,43 @@
 import { messageQueue, Message } from './server';
 import { EnergyRegulator } from './energy';
-import { respond, getConversation, getConversationStats, getRecentConversationIds } from './tools';
-import { IntelligentModel } from './intelligent-model';
+import { IntelligentModel, ModelResponse } from './intelligent-model';
+import { Inbox } from './inbox';
 
 interface ConversationEntry {
   role: 'user' | 'assistant' | 'system';
   content: string;
-  energyLevel?: number;
-  requestId?: string;
+  requestId?: string; // Links to the conversation thread this entry belongs to
   timestamp?: Date;
+  metadata?: {
+    energyLevel?: number; // Energy level when this entry was created (for assistant responses)
+    modelUsed?: string;   // Model that generated this assistant response
+  };
 }
 
 export class SensitiveLoop {
   private history: ConversationEntry[] = [];
-  // Removed time-based throttling - now purely energy-based
   private energyRegulator = new EnergyRegulator();
   private intelligentModel: IntelligentModel;
+  private inbox: Inbox;
   private isRunning = false;
   private modelSwitches = 0;
+  private stoppedByTimeout = false;
   private readonly MAX_HISTORY_LENGTH = 100;
+  private debugMode = false;
 
-  constructor() {
+  constructor(debugMode: boolean = false) {
+    this.debugMode = debugMode;
     this.intelligentModel = new IntelligentModel();
-    
-    // Initialize with system prompt
-    this.history.push({
-      role: 'system',
-      content: `You are an AI assistant with energy levels that affect your performance.
-Your current energy level will be communicated to you. When energy is low, you should be more concise.
-You have access to a 'respond' tool to reply to specific request IDs.`,
-      timestamp: new Date()
-    });
-
-    // Load past conversation context on startup
+    this.inbox = new Inbox();
     this.loadConversationContext();
   }
 
   private loadConversationContext() {
     try {
       // Load recent conversation history as context
-      const recentIds = this.getRecentConversationIds();
+      const recentIds = this.inbox.getRecentConversationIds(10);
       for (const convId of recentIds.slice(0, 5)) { // Load last 5 conversations for context
-        const conversation = getConversation(convId);
+        const conversation = this.inbox.getConversation(convId);
         if (conversation) {
           // Add as context entries
           this.history.push({
@@ -57,7 +53,10 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
                 role: 'assistant',
                 content: response.content,
                 timestamp: new Date(response.timestamp),
-                energyLevel: response.energyLevel,
+                metadata: {
+                  energyLevel: response.energyLevel,
+                  modelUsed: response.modelUsed
+                },
                 requestId: convId
               });
             }
@@ -70,9 +69,24 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
     }
   }
 
-  async start() {
+  async start(durationSeconds?: number) {
     this.isRunning = true;
     console.log(`🚀 Sensitive loop started (Energy: ${this.energyRegulator.getEnergy()})`);
+
+    // Set timeout if duration is specified
+    if (durationSeconds && durationSeconds > 0) {
+      setTimeout(() => {
+        console.log(`⏰ Duration limit reached (${durationSeconds}s), stopping loop...`);
+        this.stop(true); // Pass true to indicate timeout stop
+        
+        // Force exit after a brief delay to allow cleanup
+        setTimeout(() => {
+          console.log('Exiting due to timeout...');
+          process.exit(0);
+        }, 100); // Give 100ms for cleanup
+      }, durationSeconds * 1000);
+    }
+
     return this.runLoop();
   }
 
@@ -85,11 +99,11 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           continue;
         }
 
-        // Check for new messages
+        // Check for new messages and add them to inbox (they're already saved to DB when received)
         const newMessages = messageQueue.splice(0); // Get all pending messages
-
-        // Process new messages (add to history)
         for (const message of newMessages) {
+          this.inbox.addMessage(message);
+          // Also add to history for context
           this.addToHistory({
             role: 'user',
             content: message.content,
@@ -113,90 +127,18 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
     }
   }
 
-  stop() {
+  stop(byTimeout: boolean = false) {
     this.isRunning = false;
+    this.stoppedByTimeout = byTimeout;
     console.log('Sensitive loop stopped');
+  }
+
+  wasStoppedByTimeout(): boolean {
+    return this.stoppedByTimeout;
   }
 
   private addToHistory(entry: ConversationEntry) {
     this.history.push(entry);
-  }
-
-  private async performInference(message: Message, urgent: boolean) {
-    try {
-      // Get conversation-specific history for context
-      const conversationHistory = this.getConversationHistory(message.id);
-
-      // Add the current user message to history
-      conversationHistory.push({
-        role: 'user',
-        content: message.content
-      });
-
-      // Add current energy status as system message
-      const energyStatus = `Current energy level: ${this.energyRegulator.getEnergy()} (${this.energyRegulator.getStatus()})`;
-      conversationHistory.push({
-        role: 'system',
-        content: energyStatus
-      });
-
-      const modelResponse = await this.intelligentModel.generateResponse(conversationHistory, this.energyRegulator.getEnergy(), false);
-
-      // Consume the energy that was used
-      this.energyRegulator.consumeEnergy(modelResponse.energyConsumed);
-
-      // Add response to global history
-      this.addToHistory({
-        role: 'assistant',
-        content: modelResponse.content,
-        timestamp: new Date(),
-        energyLevel: this.energyRegulator.getEnergy(),
-        requestId: message.id
-      });
-
-      // Use tool to respond
-      await respond(message.id, message.content, modelResponse.content, this.energyRegulator.getEnergy(), modelResponse.modelUsed, this.modelSwitches);
-
-      console.log(`💬 Processed: "${this.truncateText(message.content)}..."`);
-
-    } catch (error) {
-      console.error(`❌ Inference error for message ${message.id} (Energy: ${this.energyRegulator.getEnergy()}):`, error);
-    }
-  }
-
-  private getConversationHistory(requestId: string): Array<{ role: string; content: string }> {
-    // Load the full conversation history from database
-    const conversation = getConversation(requestId);
-
-    if (!conversation || !conversation.responses) {
-      return [];
-    }
-
-    // Convert database format to the format expected by generateResponse
-    const history: Array<{ role: string; content: string }> = [];
-
-    // Add the original user message
-    if (conversation.inputMessage && conversation.inputMessage !== 'Input message to be populated') {
-      history.push({
-        role: 'user',
-        content: conversation.inputMessage
-      });
-    }
-
-    // Add all previous responses
-    for (const response of conversation.responses) {
-      // Add the user message that prompted this response (if available)
-      // For now, we'll reconstruct based on the response content
-      // In a more sophisticated system, we'd store the exact user message
-
-      // Add the assistant response
-      history.push({
-        role: 'assistant',
-        content: response.content
-      });
-    }
-
-    return history;
   }
 
   private async sleep(seconds: number) {
@@ -212,27 +154,31 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
 
       // Create the agency prompt with current energy context - give LLM full autonomy
       const currentEnergy = this.energyRegulator.getEnergy();
-      const energyStatus = this.energyRegulator.getStatus();
+      let energyStatus = this.energyRegulator.getStatus();
+      let energyGuidance = "";
+      if (currentEnergy < 0) {
+        energyGuidance = "CRITICAL - SLEEP immediately!";
+      } else if (currentEnergy < 20) {
+        energyGuidance = "Cognitive power dangerously low, prefer simpler tasks, consider SLEEP for recovery";
+      } else if (currentEnergy < 50) {
+        energyGuidance = "Cognitive power very low, prefer simpler tasks, consider SLEEP for recovery";
+      } else {
+        energyGuidance = "Normal operation, can perform complex tasks";
+      }
+      const agencyPrompt = `You are an AI assistant with energy levels that affect your performance.
+Check for pending user messages. If any exist, respond to the first one using this exact format:
+RESPOND: <conversationId>
+<your response here>
 
-      const agencyPrompt = `Current energy level: ${currentEnergy} (${energyStatus})
+Available pending conversation IDs: ${this.getAvailableConversationIds().join(', ') || 'None'}
 
-ENERGY GUIDANCE:
-- Energy > 50: Normal operation, can perform complex tasks
-- Energy 20-50: Prefer simpler tasks, consider SLEEP for recovery
-- Energy 0-20: Recommend SLEEP, use short cycles for any urgent tasks
-- Energy < 0: URGENT MODE - SLEEP in minimal cycles, be very urgent/pressing
+If no pending messages, you can think freely or sleep to save energy.
 
-Examples:
-
-# Thinking
-
-To think, just respond with your thoughts:
+To think, just respond with your inner monologue:
 
 \`\`\`
 I feel great, I'm ready to help my user with anything!
 \`\`\`
-
-# SLEEP
 
 When you need to rest, type "SLEEP: <seconds>" to rest to replenish energy (specify seconds: 1-10). For example:
 
@@ -240,25 +186,24 @@ When you need to rest, type "SLEEP: <seconds>" to rest to replenish energy (spec
 SLEEP: 5
 \`\`\`
 
-# RESPOND
+Current energy level: ${currentEnergy} (${energyStatus})
 
-To respond to a specific pending request, type "RESPOND: <requestId>" before providing the response. For example:
-
-\`\`\`
-RESPOND: 12345
-Interesting question. Let me think...
-\`\`\`
-
-You have access to past conversation history above.
-
-Available conversation IDs: ${this.getAvailableConversationIds().join(', ')}
+ENERGY GUIDANCE: ${energyGuidance}
 
 Your response:`;
 
       const messages = [
-        ...conversationHistory, // Full conversation history (cached)
-        { role: 'user', content: agencyPrompt } // Current energy context
+        { role: 'system', content: agencyPrompt },
+        ...conversationHistory,
+        {
+          role: 'user',
+          content: `There are ${this.inbox.getStats().pendingCount} conversations in the inbox. `
+        }
       ];
+
+      if (this.debugMode) {
+        console.log(`🧠 DEBUG [🔋 ${currentEnergy}] LLM full prompt:`, JSON.stringify(messages, null, 2));
+      }
 
       const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator.getEnergy(), false);
 
@@ -266,7 +211,7 @@ Your response:`;
       this.energyRegulator.consumeEnergy(modelResponse.energyConsumed);
 
       // Execute LLM decision directly
-      await this.executeLLMAutonomousDecision(modelResponse.content);
+      await this.executeLLMAutonomousDecision(modelResponse);
 
     } catch (error: any) {
       console.error(`❌ Thinking error:`, error?.message || error);
@@ -277,8 +222,8 @@ Your response:`;
     // Build conversation history from recent interactions
     const messages: Array<{ role: string; content: string }> = [];
 
-    // Add recent conversation history (last few exchanges for context)
-    const recentHistory = this.history.slice(-6); // Last 6 entries for good context
+    // Add recent conversation history (last 20 entries for better context)
+    const recentHistory = this.history.slice(-20); // Last 20 entries for better context
     for (const entry of recentHistory) {
       messages.push({
         role: entry.role,
@@ -292,10 +237,10 @@ Your response:`;
     return messages;
   }
 
-  private async executeLLMAutonomousDecision(llmResponse: string) {
+  private async executeLLMAutonomousDecision(modelResponse: ModelResponse) {
     try {
       // Clean the response
-      const cleanResponse = llmResponse.trim().toUpperCase();
+      const cleanResponse = modelResponse.content.trim().toUpperCase();
 
       const getEnergyIndicator = (energy: number) => {
         const level = Math.max(0, Math.min(7, Math.floor(energy / 12.5)));
@@ -312,64 +257,89 @@ Your response:`;
         return `${colorCode}${symbol}\x1b[0m`; // Add reset code
       };
 
-      if (cleanResponse.startsWith('REFLECT')) {
-        const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-        console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(llmResponse.trim())}`);
-      } else if (cleanResponse.includes('SLEEP:')) {
+      if (cleanResponse.startsWith('SLEEP:')) {
         const sleepMatch = cleanResponse.match(/SLEEP:\s*(\d+)/i);
         const sleepTime = sleepMatch && sleepMatch[1] ? parseInt(sleepMatch[1]) : 1;
         const clampedSleep = Math.max(1, Math.min(10, sleepTime));
-        console.log(`😴 LLM sleep: ${clampedSleep}s`);
-        console.log(`🤔 LLM thought: ${this.truncateText(llmResponse.trim())}`);
+        console.log(`😴 Sleep: ${clampedSleep}s`);
         await this.sleep(clampedSleep);
-      } else if (cleanResponse.includes('RESPOND:')) {
-        const respondMatch = cleanResponse.match(/RESPOND:\s*(.+)/i);
+      } else if (cleanResponse.startsWith('RESPOND:')) {
+        const respondMatch = cleanResponse.match(/RESPOND:\s*([^\s\n]+)/i);
         const requestId = respondMatch && respondMatch[1] ? respondMatch[1].trim() : null;
-        if (requestId) {
-          console.log(`💬 AI choosing to respond to request: ${requestId}`);
-          console.log(`🤔 LLM thought: ${this.truncateText(llmResponse.trim())}`);
-          await this.respondToRequest(requestId);
+        if (requestId && respondMatch) {
+          // Extract the response content after the RESPOND: <id> part
+          const respondPrefix = respondMatch[0];
+          const responseContent = modelResponse.content.substring(modelResponse.content.indexOf(respondPrefix) + respondPrefix.length).trim();
+          await this.respondToRequest(requestId, responseContent);
         } else {
-          // Default to reflect if unclear
+          // Default to warning if unclear
           const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-          console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(llmResponse.trim())}`);
+          console.log(`${indicator} ⚠️ Confusion: ${this.truncateText(modelResponse.content.trim())}`);
         }
       } else {
-        // Default to reflect if unclear
+        // Default to reflect/thinking for any other response
         const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-        console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(llmResponse.trim())}`);
+        console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(modelResponse.content.trim())}`);
+
+        // Add the LLM's thought to history as an assistant message
+        this.addToHistory({
+          role: 'assistant',
+          content: modelResponse.content.trim(),
+          timestamp: new Date(),
+          metadata: {
+            energyLevel: this.energyRegulator.getEnergy(),
+            modelUsed: modelResponse.modelUsed
+          }
+        });
       }
 
     } catch (error: any) {
-      console.error(`❌ Decision error:`, error?.message || error);
+      console.error(`❌ Error:`, error?.message || error);
     }
   }
 
   private getAvailableConversationIds(): string[] {
     try {
-      // Get recent conversation IDs that might need responses
-      const recentIds = this.getRecentConversationIds();
-      // For now, return all recent conversations - AI can decide which ones need responses
-      // In the future, we could filter for conversations with input but no responses
-      return recentIds.slice(0, 5); // Limit to 5 to keep prompt manageable
+      // Return pending message IDs that need responses, limit to 5
+      return this.inbox.getPendingMessageIds(5);
     } catch (error) {
       console.error('Error getting available conversation IDs:', error);
       return [];
     }
   }
 
-  private async respondToRequest(requestId: string) {
+  private async respondToRequest(requestId: string, responseContent: string) {
     try {
-      // Create a synthetic message for the existing request
-      // The conversation history will be loaded from the database based on requestId
-      const syntheticMessage: Message = {
-        id: requestId,
-        content: '[AI-initiated response to existing request]', // Placeholder content
-        timestamp: new Date()
-      };
+      // Find the user message from history
+      const userEntry = this.history.find(entry => entry.requestId === requestId && entry.role === 'user');
+      if (!userEntry) {
+        console.error(`❌ No user message found for request ${requestId}`);
+        return;
+      }
+      console.log(`💬 Response to ${requestId}: ${this.truncateText(responseContent)}`);
 
-      // Use the existing performInference logic to generate and save the response
-      await this.performInference(syntheticMessage, false);
+      // Consume energy (assume a fixed cost for autonomous responses)
+      this.energyRegulator.consumeEnergy(5); // Fixed cost for autonomous response
+
+      // Add response to global history
+      this.addToHistory({
+        role: 'assistant',
+        content: responseContent,
+        timestamp: new Date(),
+        metadata: {
+          energyLevel: this.energyRegulator.getEnergy(),
+          modelUsed: 'autonomous'
+        },
+        requestId: requestId
+      });
+
+      // Use tool to respond
+      await this.inbox.addResponse(requestId, userEntry.content, responseContent, this.energyRegulator.getEnergy(), 'autonomous', this.modelSwitches);
+
+      // Remove from pending messages list
+      this.inbox.removeMessage(requestId);
+
+      console.log(`💬 Processed autonomous response for: "${this.truncateText(userEntry.content)}..."`);
 
     } catch (error) {
       console.error(`❌ Error responding to request ${requestId}:`, error);
@@ -379,17 +349,18 @@ Your response:`;
   private getRecentConversationIds(): string[] {
     try {
       // Get recent conversation IDs from the database
-      return getRecentConversationIds(10); // Get last 10 conversations
+      return this.inbox.getRecentConversationIds(10); // Get last 10 conversations
     } catch (error) {
       console.error('Error getting recent conversation IDs:', error);
       return [];
     }
   }
 
-  private truncateText(text: string, maxLength: number = 200): string {
-    const processedText = text.replace(/\n/g, '');
-    return processedText.length > maxLength ? processedText.substring(0, maxLength) + '...' : processedText;
+  private truncateText(text: string, maxLength: number = 200, addEllipsis: boolean = true): string {
+    const processedText = text.replace(/\n/g, ' ');
+    if (processedText.length > maxLength) {
+      return addEllipsis ? processedText.substring(0, maxLength) + '...' : processedText.substring(0, maxLength);
+    }
+    return processedText;
   }
 }
-
-export const sensitiveLoop = new SensitiveLoop();

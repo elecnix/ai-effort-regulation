@@ -1,8 +1,7 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import rateLimit from 'express-rate-limit';
-import { sensitiveLoop } from './loop';
-import { getConversation, getConversationStats, respond } from './tools';
+import { Inbox } from './inbox';
 // Load environment variables
 import dotenv from 'dotenv';
 dotenv.config();
@@ -13,7 +12,7 @@ const MAX_MESSAGE_LENGTH = parseInt(process.env.MAX_MESSAGE_LENGTH || '10000');
 
 // Security: Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 1 * 60 * 1000, // 1 minute
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -82,6 +81,17 @@ app.post('/message', function(req: express.Request, res: express.Response): void
     // Add to message queue for the loop (loop will handle storing user message and generating response)
     messageQueue.push(message);
 
+    // Save the user message to database immediately
+    const globalLoop = (global as any).sensitiveLoop;
+    if (globalLoop && globalLoop.inbox) {
+      globalLoop.inbox.addResponse(messageId, sanitizedContent, '', 0, '', 0);
+    }
+
+    // Add to inbox for tracking unanswered messages
+    if (globalLoop && globalLoop.inbox) {
+      globalLoop.inbox.addMessage(message);
+    }
+
     console.log(`📨 Received: "${sanitizedContent.substring(0, 50)}${sanitizedContent.length > 50 ? '...' : ''}"`);
 
     res.json({
@@ -107,7 +117,8 @@ app.get('/conversations/:requestId', function(req: express.Request, res: express
       res.status(400).json({ error: 'requestId parameter is required' });
       return;
     }
-    const conversation = getConversation(requestId);
+    const globalLoop = (global as any).sensitiveLoop;
+    const conversation = globalLoop && globalLoop.inbox ? globalLoop.inbox.getConversation(requestId) : null;
 
     if (!conversation) {
       res.status(404).json({ error: 'Conversation not found' });
@@ -124,7 +135,8 @@ app.get('/conversations/:requestId', function(req: express.Request, res: express
 
 app.get('/stats', (req, res) => {
   try {
-    const stats = getConversationStats();
+    const globalLoop = (global as any).sensitiveLoop;
+    const stats = globalLoop && globalLoop.inbox ? globalLoop.inbox.getConversationStats() : null;
     res.json(stats || { error: 'Could not retrieve statistics' });
   } catch (error) {
     console.error('Error retrieving stats:', error);
