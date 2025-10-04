@@ -114,7 +114,12 @@ export function getConversation(requestId: string) {
 }
 
 // Add function to get conversation statistics
-export function getConversationStats() {
+export function getConversationStats(): {
+  total_conversations: number;
+  total_responses: number;
+  avg_energy_level: number | null;
+  urgent_responses: number | null;
+} | null {
   try {
     const statsStmt = db.prepare(`
       SELECT
@@ -126,7 +131,8 @@ export function getConversationStats() {
       LEFT JOIN responses r ON c.id = r.conversation_id
     `);
 
-    return statsStmt.get();
+    const result = statsStmt.get() as any;
+    return result || null;
   } catch (error) {
     console.error('Error getting conversation stats:', error);
     return null;

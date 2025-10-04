@@ -244,9 +244,13 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
       }
 
       const randomConversationId = recentConversations[Math.floor(Math.random() * Math.min(recentConversations.length, 5))];
+      if (!randomConversationId) {
+        return;
+      }
+
       const conversation = getConversation(randomConversationId);
 
-      if (!conversation || conversation.responses.length === 0) {
+      if (!conversation || !conversation.responses || conversation.responses.length === 0) {
         return;
       }
 
@@ -275,7 +279,7 @@ Please provide additional insights, follow-up thoughts, or deeper analysis on th
         const reflectionResponse = await generateResponse(messages, this.currentModel, false);
 
         // Send follow-up response to the same conversation
-        await respond(randomConversationId, `FOLLOW-UP REFLECTION: ${reflectionResponse}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
+        await respond(randomConversationId, `PLACEHOLDER`, `FOLLOW-UP REFLECTION: ${reflectionResponse}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
 
         console.log(`🔍 Reflected on conversation`);
       }
@@ -324,8 +328,8 @@ CONTENT: [your response/thought/content]`;
       // Parse LLM decision and show concise result
       await this.executeLLMDecision(llmResponse);
 
-    } catch (error) {
-      console.error(`❌ Thinking error:`, error.message);
+    } catch (error: any) {
+      console.error(`❌ Thinking error:`, error?.message || error);
     }
   }
 
@@ -362,9 +366,14 @@ CONTENT: [your response/thought/content]`;
         return;
       }
 
-      const action = actionMatch[1].trim().toUpperCase();
-      const target = targetMatch ? targetMatch[1].trim() : null;
-      const content = contentMatch ? contentMatch[1].trim() : llmResponse;
+      const action = actionMatch[1]?.trim().toUpperCase();
+      if (!action) {
+        console.log(`🤔 Thought: "${llmResponse.substring(0, 100)}..."`);
+        return;
+      }
+
+      const target = targetMatch?.[1]?.trim() || null;
+      const content = contentMatch?.[1]?.trim() || llmResponse;
 
       switch (action) {
         case 'GENERATE_THOUGHT':
@@ -375,7 +384,7 @@ CONTENT: [your response/thought/content]`;
 
         case 'REFLECT_ON_CONVERSATIONS':
           if (target && target !== 'none') {
-            await respond(target, `FOLLOW-UP REFLECTION: ${content}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
+            await respond(target, 'PLACEHOLDER', `FOLLOW-UP REFLECTION: ${content}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
             console.log(`🔍 Reflected on: "${target}"`);
           } else {
             console.log(`🔍 General reflection completed`);
@@ -396,7 +405,7 @@ CONTENT: [your response/thought/content]`;
       }
 
     } catch (error: any) {
-      console.error(`❌ Decision error:`, error.message);
+      console.error(`❌ Decision error:`, error?.message || error);
     }
   }
 
@@ -475,13 +484,15 @@ CONTENT: [your response/thought/content]`;
       const recentConversations = this.getRecentConversationIds();
       for (const convId of recentConversations.slice(0, 3)) {
         const conversation = getConversation(convId);
-        if (conversation && conversation.responses.length > 0) {
+        if (conversation && conversation.responses && conversation.responses.length > 0) {
           const lastResponse = conversation.responses[conversation.responses.length - 1];
-          // Urgent if response is very short (might need more depth) or contains urgent topics
-          const isVeryShort = lastResponse.content.length < 100;
-          const hasUrgentTopics = /error|problem|issue|urgent|critical/i.test(lastResponse.content);
-          if (isVeryShort || hasUrgentTopics) {
-            return true;
+          if (lastResponse) {
+            // Urgent if response is very short (might need more depth) or contains urgent topics
+            const isVeryShort = lastResponse.content.length < 100;
+            const hasUrgentTopics = /error|problem|issue|urgent|critical/i.test(lastResponse.content);
+            if (isVeryShort || hasUrgentTopics) {
+              return true;
+            }
           }
         }
       }
@@ -497,13 +508,15 @@ CONTENT: [your response/thought/content]`;
       const recentConversations = this.getRecentConversationIds();
       for (const convId of recentConversations.slice(0, 2)) {
         const conversation = getConversation(convId);
-        if (conversation && conversation.responses.length > 0) {
+        if (conversation && conversation.responses && conversation.responses.length > 0) {
           const lastResponse = conversation.responses[conversation.responses.length - 1];
-          // Critical if very short responses or error-related content
-          const isExtremelyShort = lastResponse.content.length < 50;
-          const hasErrors = /error|fail|problem|issue|bug|crash/i.test(lastResponse.content);
-          if (isExtremelyShort || hasErrors) {
-            return true;
+          if (lastResponse) {
+            // Critical if very short responses or error-related content
+            const isExtremelyShort = lastResponse.content.length < 50;
+            const hasErrors = /error|fail|problem|issue|bug|crash/i.test(lastResponse.content);
+            if (isExtremelyShort || hasErrors) {
+              return true;
+            }
           }
         }
       }

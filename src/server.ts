@@ -98,19 +98,29 @@ app.post('/message', (req, res) => {
 
 // New endpoints for conversation data
 app.get('/conversations/:requestId', (req, res) => {
-  const { requestId } = req.params;
-  const conversation = getConversation(requestId);
+  try {
+    const { requestId } = req.params;
+    const conversation = getConversation(requestId);
 
-  if (!conversation) {
-    return res.status(404).json({ error: 'Conversation not found' });
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
+    res.json(conversation);
+  } catch (error) {
+    console.error('Error retrieving conversation:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-
-  res.json(conversation);
 });
 
 app.get('/stats', (req, res) => {
-  const stats = getConversationStats();
-  res.json(stats || { error: 'Could not retrieve statistics' });
+  try {
+    const stats = getConversationStats();
+    res.json(stats || { error: 'Could not retrieve statistics' });
+  } catch (error) {
+    console.error('Error retrieving stats:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // Add endpoint to view internal thought metadata (not content)
