@@ -251,23 +251,25 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
       if (shouldFollowUp) {
         console.log(`Reflecting on conversation: ${randomConversationId} (Energy: ${this.energyRegulator.getEnergy()})`);
 
-        // Create reflection context
-        const reflectionContext = this.buildReflectionContext(conversation);
+        // Build conversation history for this specific conversation
+        const conversationMessages = this.buildConversationHistory(conversation);
 
-        // Generate reflective response
-        const reflectionPrompt = `You are reflecting on a previous conversation. Here is the context:
+        // Create reflection prompt with current energy context
+        const currentEnergy = this.energyRegulator.getEnergy();
+        const energyStatus = this.energyRegulator.getStatus();
 
-Original question: "${conversation.inputMessage}"
-Previous response: "${conversation.responses[conversation.responses.length - 1].content}"
+        const reflectionPrompt = `Current energy level: ${currentEnergy} (${energyStatus})
+
+You are reflecting on the conversation above. The last message was: "${conversation.responses[conversation.responses.length - 1].content}"
 
 Please provide additional insights, follow-up thoughts, or deeper analysis on this topic. Keep your response concise but meaningful.`;
 
-        const reflectionMessages = [
-          { role: 'system', content: 'You are an AI reflecting on past conversations to provide deeper insights.' },
+        const messages = [
+          ...conversationMessages,
           { role: 'user', content: reflectionPrompt }
         ];
 
-        const reflectionResponse = await generateResponse(reflectionMessages, this.currentModel, false);
+        const reflectionResponse = await generateResponse(messages, this.currentModel, false);
 
         // Send follow-up response to the same conversation
         await respond(randomConversationId, `FOLLOW-UP REFLECTION: ${reflectionResponse}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
@@ -284,14 +286,16 @@ Please provide additional insights, follow-up thoughts, or deeper analysis on th
     try {
       console.log(`🤖 Unified cognitive action - letting LLM decide (Energy: ${this.energyRegulator.getEnergy()})`);
 
-      // Gather complete context
-      const fullContext = this.buildUnifiedContext();
+      // Build conversation history (rely on prompt caching for efficiency)
+      const conversationHistory = this.buildUnifiedContext();
 
-      // Present to LLM with agency to choose action
-      const agencyPrompt = `You are an AI with full cognitive agency. Based on the complete context below, decide what action to take:
+      // Create the agency prompt with current energy context
+      const currentEnergy = this.energyRegulator.getEnergy();
+      const energyStatus = this.energyRegulator.getStatus();
 
-CONTEXT:
-${fullContext}
+      const agencyPrompt = `Current energy level: ${currentEnergy} (${energyStatus})
+
+You are an AI with full cognitive agency. Based on your conversation history above, decide what action to take:
 
 AVAILABLE ACTIONS:
 1. RESPOND_TO_MESSAGE: Choose a pending message and provide a thoughtful response
@@ -311,8 +315,8 @@ TARGET: [target_id or "none"]
 CONTENT: [your response/thought/content]`;
 
       const messages = [
-        { role: 'system', content: 'You are an autonomous AI with full decision-making capability. Choose the most appropriate action based on current context and energy state.' },
-        { role: 'user', content: agencyPrompt }
+        ...conversationHistory, // Full conversation history (cached)
+        { role: 'user', content: agencyPrompt } // Current energy context
       ];
 
       const llmResponse = await generateResponse(messages, this.currentModel, false);
@@ -325,40 +329,23 @@ CONTENT: [your response/thought/content]`;
     }
   }
 
-  private buildUnifiedContext(): string {
-    const energy = this.energyRegulator.getEnergy();
-    const stats = getConversationStats();
+  private buildUnifiedContext(): Array<{ role: string; content: string }> {
+    // Build conversation history from recent interactions
+    const messages: Array<{ role: string; content: string }> = [];
 
-    let context = `CURRENT STATE:
-- Energy Level: ${energy} (${this.energyRegulator.getStatus()})
-- System Stats: ${stats ? `${stats.total_conversations} conversations, ${stats.total_responses} responses` : 'No stats available'}
-- Recent Activity: ${this.history.slice(-3).map(h => `${h.role}: ${h.content.substring(0, 50)}...`).join('; ')}
-
-PENDING MESSAGES:`;
-
-    // Check for pending messages (this is a simplified check - in reality we'd check the messageQueue)
-    // For now, we'll use recent conversations as context
-    const recentConversations = this.getRecentConversationIds();
-    if (recentConversations.length > 0) {
-      context += '\nRecent Conversations:';
-      recentConversations.slice(0, 3).forEach(id => {
-        const conv = getConversation(id);
-        if (conv) {
-          context += `\n- ${id}: "${conv.inputMessage?.substring(0, 100) || 'No message'}" (${conv.responses.length} responses)`;
-        }
+    // Add recent conversation history (last few exchanges for context)
+    const recentHistory = this.history.slice(-6); // Last 6 entries for good context
+    for (const entry of recentHistory) {
+      messages.push({
+        role: entry.role,
+        content: entry.content
       });
-    } else {
-      context += '\n- No pending messages';
     }
 
-    context += '\n\nINTERNAL STATE:';
-    context += `\n- Thought Count: ${this.internalMonologue.length}`;
-    if (this.internalMonologue.length > 0) {
-      const lastThought = this.internalMonologue[this.internalMonologue.length - 1];
-      context += `\n- Last Thought Energy: ${lastThought.energyLevel}`;
-    }
+    // Add any pending messages as user messages
+    // Note: In a more sophisticated system, we'd track pending messages separately
 
-    return context;
+    return messages;
   }
 
   private async executeLLMDecision(llmResponse: string) {
@@ -449,10 +436,29 @@ PENDING MESSAGES:`;
     return isShortResponse || hasComplexTopics || (isRecent && Math.random() < 0.3); // 30% chance for recent convos
   }
 
-  private buildReflectionContext(conversation: any): string {
-    // Build context for reflection
-    const responses = conversation.responses.slice(-2); // Last 2 responses for context
-    return responses.map((r: any) => `[${r.timestamp}] ${r.content}`).join('\n');
+  private buildConversationHistory(conversation: any): Array<{ role: string; content: string }> {
+    // Build message history from a specific conversation
+    const messages: Array<{ role: string; content: string }> = [];
+
+    // Add the original user message if available
+    if (conversation.inputMessage && conversation.inputMessage !== 'Input message to be populated') {
+      messages.push({
+        role: 'user',
+        content: conversation.inputMessage
+      });
+    }
+
+    // Add all responses (assistant messages)
+    if (conversation.responses) {
+      for (const response of conversation.responses) {
+        messages.push({
+          role: 'assistant',
+          content: response.content
+        });
+      }
+    }
+
+    return messages;
   }
 
   private shouldReflectBasedOnConversations(): boolean {
