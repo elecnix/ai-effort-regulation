@@ -6,22 +6,18 @@ import { respond, getConversation, getConversationStats, getRecentConversationId
 interface ConversationEntry {
   role: 'user' | 'assistant' | 'system';
   content: string;
-  timestamp: Date;
   energyLevel?: number;
   requestId?: string;
+  timestamp?: Date;
 }
 
 export class SensitiveLoop {
-  private history: ConversationEntry[] = []; // Global conversation history
-  private internalMonologue: Array<{thought: string, timestamp: Date, energyLevel: number}> = []; // Internal thought stream
+  private history: ConversationEntry[] = [];
+  // Removed time-based throttling - now purely energy-based
   private energyRegulator = new EnergyRegulator();
   private currentModel = 'gemma:3b'; // Start with smaller model (matches spec)
   private isRunning = false;
   private modelSwitches = 0;
-  private lastReflectionTime = Date.now();
-  private reflectionInterval = 30000; // Minimum interval between reflections (anti-spam)
-  private lastInternalThought = Date.now();
-  private internalThoughtInterval = 45000; // Minimum interval between internal thoughts (anti-spam)
 
   constructor() {
     // Initialize with system prompt
@@ -93,28 +89,38 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           const sleepTime = this.energyRegulator.getEnergy() < 0 ? 5 : 10; // Minimal cycles in urgent mode
           await this.sleep(sleepTime);
         } else {
-          // Unified decision making: provide full context and let LLM decide action
+          // Energy-based decision making: think based on energy levels only
           const energy = this.energyRegulator.getEnergy();
           const now = Date.now();
 
-          // Only proceed if minimum intervals are respected (anti-spam)
-          const canThink = now - this.lastInternalThought >= this.internalThoughtInterval;
-
-          if (energy > 20 && canThink) {
-            // Only log when starting a thinking session
+          if (energy > 50) {
+            // High energy - continuous thinking and reflection
             console.log(`🧠 AI thinking (Energy: ${energy})`);
             await this.unifiedCognitiveAction();
-            this.lastInternalThought = now;
-          } else if (energy <= 20) {
-            // Low energy - sleep more
-            const sleepTime = energy > 0 ? 2 : 4;
-            console.log(`😴 Resting: ${sleepTime}s (Energy: ${energy})`);
-            await this.sleep(sleepTime);
+          } else if (energy > 20) {
+            // Medium energy - occasional thinking (random chance)
+            if (Math.random() < 0.3) { // 30% chance to think
+              console.log(`🧠 AI thinking (Energy: ${energy})`);
+              await this.unifiedCognitiveAction();
+            } else {
+              await this.sleep(1);
+            }
+          } else if (energy > 0) {
+            // Low energy - minimal thinking, mostly sleep
+            if (Math.random() < 0.1) { // 10% chance to think
+              console.log(`🧠 AI thinking (Energy: ${energy})`);
+              await this.unifiedCognitiveAction();
+            } else {
+              const sleepTime = 2;
+              console.log(`😴 Resting: ${sleepTime}s (Energy: ${energy})`);
+              await this.sleep(sleepTime);
+            }
           } else {
-            // Waiting for minimum interval - short sleep
-            await this.sleep(1);
+            // Critical energy - sleep for recovery
+            const sleepTime = 5;
+            console.log(`😴 Deep rest: ${sleepTime}s (Energy: ${energy})`);
+            await this.sleep(sleepTime);
           }
-        }
 
         // Maintain sliding window history (keep last 10 entries)
         if (this.history.length > 10) {
