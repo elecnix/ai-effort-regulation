@@ -90,20 +90,69 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           const sleepTime = this.energyRegulator.getEnergy() < 0 ? 5 : 10; // Minimal cycles in urgent mode
           await this.sleep(sleepTime);
         } else {
-          // Check for internal thoughts or reflection when idle
+          // Prioritize actions based on energy level and timing
           const now = Date.now();
-          const shouldReflect = now - this.lastReflectionTime > this.reflectionInterval && this.energyRegulator.getEnergy() > 30;
-          const shouldThinkInternally = now - this.lastInternalThought > this.internalThoughtInterval && this.energyRegulator.getEnergy() > 40;
+          const energy = this.energyRegulator.getEnergy();
 
-          if (shouldThinkInternally) {
-            await this.generateInternalThought();
-            this.lastInternalThought = now;
-          } else if (shouldReflect) {
-            await this.performReflection();
-            this.lastReflectionTime = now;
+          // High energy (>80): Always prefer thinking activities
+          if (energy > 80) {
+            const timeSinceReflection = now - this.lastReflectionTime;
+            const timeSinceInternalThought = now - this.lastInternalThought;
+
+            // Alternate between reflection and internal thoughts when energy is high
+            if (timeSinceReflection >= this.reflectionInterval && timeSinceInternalThought >= this.internalThoughtInterval) {
+              // Both are ready - prefer internal thoughts for continuous development
+              await this.generateInternalThought();
+              this.lastInternalThought = now;
+            } else if (timeSinceInternalThought >= this.internalThoughtInterval) {
+              // Internal thoughts are ready
+              await this.generateInternalThought();
+              this.lastInternalThought = now;
+            } else if (timeSinceReflection >= this.reflectionInterval) {
+              // Reflection is ready
+              await this.performReflection();
+              this.lastReflectionTime = now;
+            } else {
+              // Both on cooldown but energy is high - do whichever has less remaining time
+              const reflectionRemaining = this.reflectionInterval - timeSinceReflection;
+              const internalRemaining = this.internalThoughtInterval - timeSinceInternalThought;
+
+              if (reflectionRemaining < internalRemaining) {
+                await this.performReflection();
+                this.lastReflectionTime = now;
+              } else {
+                await this.generateInternalThought();
+                this.lastInternalThought = now;
+              }
+            }
+          }
+          // Medium energy (40-80): Check timing requirements
+          else if (energy > 40) {
+            const shouldReflect = now - this.lastReflectionTime > this.reflectionInterval;
+            const shouldThinkInternally = now - this.lastInternalThought > this.internalThoughtInterval;
+
+            if (shouldThinkInternally) {
+              await this.generateInternalThought();
+              this.lastInternalThought = now;
+            } else if (shouldReflect) {
+              await this.performReflection();
+              this.lastReflectionTime = now;
+            } else {
+              // Energy medium, both on cooldown - short sleep
+              await this.sleep(1);
+            }
+          }
+          // Low energy (30-40): Only reflect if timing allows
+          else if (energy > 30) {
+            if (now - this.lastReflectionTime > this.reflectionInterval) {
+              await this.performReflection();
+              this.lastReflectionTime = now;
+            } else {
+              await this.sleep(1);
+            }
           } else {
-            // No messages, energy OK - short sleep
-            await this.sleep(1);
+            // Very low energy - sleep to recover
+            await this.sleep(2);
           }
         }
 
