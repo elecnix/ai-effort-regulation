@@ -59,6 +59,16 @@ app.get('/stats', (req, res) => {
   res.json(stats || { error: 'Could not retrieve statistics' });
 });
 
+// Add endpoint to view internal monologue
+app.get('/internal-thoughts', (req, res) => {
+  // Get the sensitive loop instance to access internal monologue
+  const thoughts = (global as any).sensitiveLoop?.internalMonologue || [];
+  res.json({
+    thoughts: thoughts.slice(-10), // Last 10 thoughts
+    totalThoughts: thoughts.length
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });

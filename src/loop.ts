@@ -12,13 +12,16 @@ interface ConversationEntry {
 }
 
 export class SensitiveLoop {
-  private history: ConversationEntry[] = [];
+  private history: ConversationEntry[] = []; // Global conversation history
+  private internalMonologue: Array<{thought: string, timestamp: Date, energyLevel: number}> = []; // Internal thought stream
   private energyRegulator = new EnergyRegulator();
   private currentModel = 'gemma:3b'; // Start with smaller model (matches spec)
   private isRunning = false;
   private modelSwitches = 0;
   private lastReflectionTime = Date.now();
   private reflectionInterval = 30000; // Reflect every 30 seconds
+  private lastInternalThought = Date.now();
+  private internalThoughtInterval = 45000; // Internal thoughts every 45 seconds
 
   constructor() {
     // Initialize with system prompt
@@ -87,9 +90,15 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           const sleepTime = this.energyRegulator.getEnergy() < 0 ? 5 : 10; // Minimal cycles in urgent mode
           await this.sleep(sleepTime);
         } else {
-          // Check if it's time for reflection (when energy is good and no urgent messages)
+          // Check for internal thoughts or reflection when idle
           const now = Date.now();
-          if (now - this.lastReflectionTime > this.reflectionInterval && this.energyRegulator.getEnergy() > 30) {
+          const shouldReflect = now - this.lastReflectionTime > this.reflectionInterval && this.energyRegulator.getEnergy() > 30;
+          const shouldThinkInternally = now - this.lastInternalThought > this.internalThoughtInterval && this.energyRegulator.getEnergy() > 40;
+
+          if (shouldThinkInternally) {
+            await this.generateInternalThought();
+            this.lastInternalThought = now;
+          } else if (shouldReflect) {
             await this.performReflection();
             this.lastReflectionTime = now;
           } else {
@@ -258,6 +267,54 @@ Please provide additional insights, follow-up thoughts, or deeper analysis on th
 
     } catch (error) {
       console.error('Error during reflection:', error);
+    }
+  }
+
+  private async generateInternalThought() {
+    try {
+      console.log('Generating internal thought...');
+
+      // Build context from recent internal monologue
+      const recentThoughts = this.internalMonologue.slice(-3); // Last 3 internal thoughts
+      const thoughtContext = recentThoughts.map(thought =>
+        `[${thought.timestamp.toISOString()}] ${thought.thought}`
+      ).join('\n');
+
+      // Also include some recent external interactions for inspiration
+      const recentHistory = this.history.slice(-2).map(entry =>
+        `${entry.role}: ${entry.content.substring(0, 100)}${entry.content.length > 100 ? '...' : ''}`
+      ).join('\n');
+
+      const thoughtPrompt = `You are an AI engaging in internal reflection. Here is your recent thought process:
+
+${thoughtContext ? `Recent internal thoughts:\n${thoughtContext}\n\n` : ''}Recent external interactions:
+${recentHistory}
+
+Based on these thoughts and interactions, generate a new internal thought. This should be a natural continuation of your thinking process - perhaps exploring implications, making connections, or developing ideas further. Keep it concise but meaningful, like a natural thought progression.`;
+
+      const thoughtMessages = [
+        { role: 'system', content: 'You are an AI maintaining an internal monologue. Generate natural, flowing thoughts that build on previous thinking.' },
+        { role: 'user', content: thoughtPrompt }
+      ];
+
+      const internalThought = await generateResponse(thoughtMessages, this.currentModel, false);
+
+      // Add to internal monologue
+      this.internalMonologue.push({
+        thought: internalThought,
+        timestamp: new Date(),
+        energyLevel: this.energyRegulator.getEnergy()
+      });
+
+      // Keep monologue manageable (last 20 thoughts)
+      if (this.internalMonologue.length > 20) {
+        this.internalMonologue = this.internalMonologue.slice(-20);
+      }
+
+      console.log(`Internal thought generated: "${internalThought.substring(0, 100)}${internalThought.length > 100 ? '...' : ''}"`);
+
+    } catch (error) {
+      console.error('Error generating internal thought:', error);
     }
   }
 

@@ -1,6 +1,9 @@
 import { startServer } from './server';
 import { sensitiveLoop } from './loop';
 
+// Make sensitive loop globally accessible for server endpoints
+(global as any).sensitiveLoop = sensitiveLoop;
+
 async function main() {
   console.log('Starting AI Effort Regulation Demo...');
 
