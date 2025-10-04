@@ -91,7 +91,6 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
         } else {
           // Energy-based decision making: think based on energy levels only
           const energy = this.energyRegulator.getEnergy();
-          const now = Date.now();
 
           if (energy > 50) {
             // High energy - continuous thinking but less noisy
@@ -125,9 +124,10 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
             await this.sleep(sleepTime);
           }
 
-        // Maintain sliding window history (keep last 10 entries)
-        if (this.history.length > 10) {
-          this.history = this.history.slice(-10);
+          // Maintain sliding window history (keep last 10 entries)
+          if (this.history.length > 10) {
+            this.history = this.history.slice(-10);
+          }
         }
 
       } catch (error) {
