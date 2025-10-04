@@ -3,19 +3,17 @@ import { v4 as uuidv4 } from 'uuid';
 import rateLimit from 'express-rate-limit';
 import { sensitiveLoop } from './loop';
 import { getConversation, getConversationStats, respond } from './tools';
-
 // Load environment variables
 import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3002');
+const PORT = parseInt(process.env.PORT || '3005');
 const MAX_MESSAGE_LENGTH = parseInt(process.env.MAX_MESSAGE_LENGTH || '10000');
 
 // Security: Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,

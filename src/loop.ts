@@ -1,7 +1,7 @@
 import { messageQueue, Message } from './server';
 import { EnergyRegulator } from './energy';
-import { generateResponse } from './llm';
 import { respond, getConversation, getConversationStats, getRecentConversationIds } from './tools';
+import { IntelligentModel } from './intelligent-model';
 
 interface ConversationEntry {
   role: 'user' | 'assistant' | 'system';
@@ -15,11 +15,14 @@ export class SensitiveLoop {
   private history: ConversationEntry[] = [];
   // Removed time-based throttling - now purely energy-based
   private energyRegulator = new EnergyRegulator();
-  private currentModel = 'gemma:3b'; // Start with smaller model (matches spec)
+  private intelligentModel: IntelligentModel;
   private isRunning = false;
   private modelSwitches = 0;
+  private readonly MAX_HISTORY_LENGTH = 100;
 
   constructor() {
+    this.intelligentModel = new IntelligentModel();
+    
     // Initialize with system prompt
     this.history.push({
       role: 'system',
@@ -28,6 +31,43 @@ Your current energy level will be communicated to you. When energy is low, you s
 You have access to a 'respond' tool to reply to specific request IDs.`,
       timestamp: new Date()
     });
+
+    // Load past conversation context on startup
+    this.loadConversationContext();
+  }
+
+  private loadConversationContext() {
+    try {
+      // Load recent conversation history as context
+      const recentIds = this.getRecentConversationIds();
+      for (const convId of recentIds.slice(0, 5)) { // Load last 5 conversations for context
+        const conversation = getConversation(convId);
+        if (conversation) {
+          // Add as context entries
+          this.history.push({
+            role: 'system',
+            content: `(conversation ${convId}): ${conversation.inputMessage}`,
+            timestamp: new Date(),
+            requestId: convId
+          });
+
+          if (conversation.responses) {
+            for (const response of conversation.responses) {
+              this.history.push({
+                role: 'assistant',
+                content: response.content,
+                timestamp: new Date(response.timestamp),
+                energyLevel: response.energyLevel,
+                requestId: convId
+              });
+            }
+          }
+        }
+      }
+      console.log(`Loaded ${this.history.length} context entries from database`);
+    } catch (error) {
+      console.error('Error loading conversation context:', error);
+    }
   }
 
   async start() {
@@ -39,6 +79,13 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
   private async runLoop() {
     while (this.isRunning) {
       try {
+        // Check for critical energy levels (< -50) - explicit throttling
+        if (this.energyRegulator.getEnergy() < -50) {
+          console.log(`⚠️ Critical energy (${this.energyRegulator.getEnergy()}) - forced recovery sleep`);
+          await this.sleep(10);
+          continue;
+        }
+
         // Check for new messages
         const newMessages = messageQueue.splice(0); // Get all pending messages
 
@@ -52,76 +99,19 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           });
         }
 
-        // Add current energy status as ephemeral message
-        const energyStatus = `Current energy level: ${this.energyRegulator.getEnergy()} (${this.energyRegulator.getStatus()})`;
-        this.addToHistory({
-          role: 'system',
-          content: energyStatus,
-          timestamp: new Date()
-        });
-
-        // Decide action based on energy and messages (matches spec decision logic)
         if (newMessages.length > 0) {
-          const energy = this.energyRegulator.getEnergy();
-
-          // Process all pending messages
+          // Process all pending messages - let LLM decide based on energy
           for (const message of newMessages) {
-            if (energy > 50) {
-              // Normal operation - can perform complex tasks
-              await this.performInference(message, false);
-            } else if (energy > 20) {
-              // Medium energy - consider simpler tasks or model switch
-              // Switch to smaller model if not already using it
-              if (!this.currentModel.includes('3b')) {
-                this.switchToSmallerModel();
-              }
-              await this.performInference(message, false);
-            } else if (energy > 0) {
-              // Low energy - short cycles for urgent tasks
-              await this.performInference(message, false);
-            } else {
-              // Urgent mode - sleep in minimal cycles, use pressing tone
-              await this.performInference(message, true); // urgent=true for pressing tone
-            }
+            await this.performInference(message, false);
           }
-        } else if (this.energyRegulator.isDepleted()) {
-          // Low energy, no messages - sleep longer to recover
-          const sleepTime = this.energyRegulator.getEnergy() < 0 ? 5 : 10; // Minimal cycles in urgent mode
-          await this.sleep(sleepTime);
         } else {
-          // Energy-based decision making: think based on energy levels only
-          const energy = this.energyRegulator.getEnergy();
+          // No messages - autonomous cognitive action (LLM decides what to do)
+          await this.unifiedCognitiveAction();
+        }
 
-          if (energy > 50) {
-            // High energy - continuous thinking but less noisy
-            await this.unifiedCognitiveAction();
-          } else if (energy > 20) {
-            // Medium energy - occasional thinking (random chance)
-            if (Math.random() < 0.3) { // 30% chance to think
-              await this.unifiedCognitiveAction();
-            } else {
-              await this.sleep(1);
-            }
-          } else if (energy > 0) {
-            // Low energy - minimal thinking, mostly sleep
-            if (Math.random() < 0.1) { // 10% chance to think
-              await this.unifiedCognitiveAction();
-            } else {
-              const sleepTime = 2;
-              console.log(`😴 Resting: ${sleepTime}s (${energy})`);
-              await this.sleep(sleepTime);
-            }
-          } else {
-            // Critical energy - sleep for recovery
-            const sleepTime = 5;
-            console.log(`😴 Deep rest: ${sleepTime}s (${energy})`);
-            await this.sleep(sleepTime);
-          }
-
-          // Maintain sliding window history (keep last 10 entries)
-          if (this.history.length > 10) {
-            this.history = this.history.slice(-10);
-          }
+        // Maintain sliding window history (keep last 100 entries for better context)
+        if (this.history.length > this.MAX_HISTORY_LENGTH) {
+          this.history = this.history.slice(-this.MAX_HISTORY_LENGTH);
         }
 
       } catch (error) {
@@ -142,9 +132,6 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
 
   private async performInference(message: Message, urgent: boolean) {
     try {
-      const energyConsumption = this.getEnergyConsumption(this.currentModel);
-      this.energyRegulator.consumeEnergy(energyConsumption);
-
       // Get conversation-specific history for context
       const conversationHistory = this.getConversationHistory(message.id);
 
@@ -154,26 +141,29 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
         content: message.content
       });
 
-      // Add current energy status as ephemeral message
+      // Add current energy status as system message
       const energyStatus = `Current energy level: ${this.energyRegulator.getEnergy()} (${this.energyRegulator.getStatus()})`;
       conversationHistory.push({
         role: 'system',
         content: energyStatus
       });
 
-      const response = await generateResponse(conversationHistory, this.currentModel, urgent);
+      const modelResponse = await this.intelligentModel.generateResponse(conversationHistory, this.energyRegulator.getEnergy(), false);
+
+      // Consume the energy that was used
+      this.energyRegulator.consumeEnergy(modelResponse.energyConsumed);
 
       // Add response to global history
       this.addToHistory({
         role: 'assistant',
-        content: response,
+        content: modelResponse.content,
         timestamp: new Date(),
         energyLevel: this.energyRegulator.getEnergy(),
         requestId: message.id
       });
 
       // Use tool to respond
-      await respond(message.id, message.content, response, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
+      await respond(message.id, message.content, modelResponse.content, this.energyRegulator.getEnergy(), modelResponse.modelUsed, this.modelSwitches);
 
       console.log(`💬 Processed: "${this.truncateText(message.content, 30)}..."`);
 
@@ -229,43 +219,37 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
       // Build conversation history (rely on prompt caching for efficiency)
       const conversationHistory = this.buildUnifiedContext();
 
-      // Create the agency prompt with current energy context
+      // Create the agency prompt with current energy context - give LLM full autonomy
       const currentEnergy = this.energyRegulator.getEnergy();
       const energyStatus = this.energyRegulator.getStatus();
 
       const agencyPrompt = `Current energy level: ${currentEnergy} (${energyStatus})
 
-You are an AI with full cognitive agency. Based on your conversation history above, decide what action to take:
+You have access to past conversation history above. Choose your next action:
 
-AVAILABLE ACTIONS:
-1. GENERATE_THOUGHT: Create an internal thought exploring ideas or connections
-2. REFLECT_ON_CONVERSATIONS: Analyze past conversations and provide insights
-3. MAKE_TOOL_CALL: Use a tool to perform an action (like checking stats)
-4. NO_ACTION: If nothing needs to be done right now
+REFLECT: Analyze past conversations and generate insights
+SLEEP: Rest to replenish energy (specify seconds: 1-10)
+RESPOND: Reply to a specific pending request (specify request ID)
 
-Choose ONE action and provide:
-- Action type
-- Target (message ID, conversation ID, etc. if applicable)
-- Content/Response/Thought
+Respond with JUST the action and parameter.
+Examples: REFLECT or SLEEP: 3 or RESPOND: abc-123-def
 
-Format your response as:
-ACTION: [action_type]
-TARGET: [target_id or "none"]
-CONTENT: [your response/thought/content]`;
+Available conversation IDs: ${this.getAvailableConversationIds().join(', ')}
+
+What should you do?`;
 
       const messages = [
         ...conversationHistory, // Full conversation history (cached)
         { role: 'user', content: agencyPrompt } // Current energy context
       ];
 
-      const llmResponse = await generateResponse(messages, this.currentModel, false);
+      const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator.getEnergy(), false);
 
-      // Consume energy for thinking (same as inference)
-      const energyConsumption = this.getEnergyConsumption(this.currentModel);
-      this.energyRegulator.consumeEnergy(energyConsumption);
+      // Consume the energy that was used
+      this.energyRegulator.consumeEnergy(modelResponse.energyConsumed);
 
-      // Parse LLM decision and show concise result
-      await this.executeLLMDecision(llmResponse);
+      // Execute LLM decision directly
+      await this.executeLLMAutonomousDecision(modelResponse.content);
 
     } catch (error: any) {
       console.error(`❌ Thinking error:`, error?.message || error);
@@ -291,69 +275,85 @@ CONTENT: [your response/thought/content]`;
     return messages;
   }
 
-  private async executeLLMDecision(llmResponse: string) {
+  private async executeLLMAutonomousDecision(llmResponse: string) {
     try {
-      // Parse the LLM response
-      const actionMatch = llmResponse.match(/ACTION:\s*(.+)/i);
-      const targetMatch = llmResponse.match(/TARGET:\s*(.+)/i);
-      const contentMatch = llmResponse.match(/CONTENT:\s*([\s\S]+)/i);
+      // Clean the response
+      const cleanResponse = llmResponse.trim().toUpperCase();
 
       const getEnergyIndicator = (energy: number) => {
         const level = Math.min(7, Math.floor(energy / 12.5));
-        return ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'][level];
+        const symbol = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'][level];
+
+        // Color gradient: red (low) to green (high)
+        let colorCode = '\x1b[31m'; // Red for low energy
+        if (level >= 5) {
+          colorCode = '\x1b[32m'; // Green for high energy
+        } else if (level >= 3) {
+          colorCode = '\x1b[33m'; // Yellow for medium energy
+        }
+
+        return `${colorCode}${symbol}\x1b[0m`; // Add reset code
       };
 
-      if (!actionMatch) {
-        // Default to internal thought - show first 200 chars
-        const thought = this.truncateText(llmResponse);
+      if (cleanResponse.startsWith('REFLECT')) {
         const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-        console.log(`${indicator} Thought: "${thought}"`);
-        return;
-      }
-
-      const action = actionMatch[1]?.trim().toUpperCase();
-
-      if (!action) {
-        const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-        console.log(`${indicator} Thought: "${this.truncateText(llmResponse)}..."`);
-        return;
-      }
-
-      const target = targetMatch?.[1]?.trim() || null;
-      const content = contentMatch?.[1]?.trim() || llmResponse;
-
-      switch (action) {
-        case 'GENERATE_THOUGHT':
-          // Show first 200 characters of the thought
-          const thought = this.truncateText(content);
+        console.log(`${indicator} Reflecting: "${this.truncateText(cleanResponse.replace(/^REFLECT/i, '').trim())}"`);
+      } else if (cleanResponse.includes('SLEEP:')) {
+        const sleepMatch = cleanResponse.match(/SLEEP:\s*(\d+)/i);
+        const sleepTime = sleepMatch && sleepMatch[1] ? parseInt(sleepMatch[1]) : 1;
+        const clampedSleep = Math.max(1, Math.min(10, sleepTime));
+        console.log(`😴 LLM sleep: ${clampedSleep}s`);
+        await this.sleep(clampedSleep);
+      } else if (cleanResponse.includes('RESPOND:')) {
+        const respondMatch = cleanResponse.match(/RESPOND:\s*(.+)/i);
+        const requestId = respondMatch && respondMatch[1] ? respondMatch[1].trim() : null;
+        if (requestId) {
+          console.log(`💬 AI choosing to respond to request: ${requestId}`);
+          await this.respondToRequest(requestId);
+        } else {
+          // Default to reflect if unclear
           const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-          console.log(`${indicator} Thought: "${thought}"`);
-          break;
-
-        case 'REFLECT_ON_CONVERSATIONS':
-          if (target && target.toLowerCase() !== 'none') {
-            await respond(target, 'PLACEHOLDER', `FOLLOW-UP REFLECTION: ${content}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
-          }
-          console.log(`🔍 Reflection: ${this.truncateText(content)}...`);
-          break;
-
-        case 'MAKE_TOOL_CALL':
-          console.log(`🔧 Tool request: "${this.truncateText(content)}..."`);
-          break;
-
-        case 'NO_ACTION':
-          // Don't log anything for no action - keep it quiet
-          break;
-
-        default:
-          // If LLM chooses an invalid action, treat it as a thought
-          const fallbackThought = this.truncateText(content);
-          const indicatorFallback = getEnergyIndicator(this.energyRegulator.getEnergy());
-          console.log(`${indicatorFallback} Thought: "${fallbackThought}"`);
+          console.log(`${indicator} Reflecting: "${this.truncateText(cleanResponse)}"`);
+        }
+      } else {
+        // Default to reflect if unclear
+        const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
+        console.log(`${indicator} Reflecting: "${this.truncateText(cleanResponse)}"`);
       }
 
     } catch (error: any) {
       console.error(`❌ Decision error:`, error?.message || error);
+    }
+  }
+
+  private getAvailableConversationIds(): string[] {
+    try {
+      // Get recent conversation IDs that might need responses
+      const recentIds = this.getRecentConversationIds();
+      // For now, return all recent conversations - AI can decide which ones need responses
+      // In the future, we could filter for conversations with input but no responses
+      return recentIds.slice(0, 5); // Limit to 5 to keep prompt manageable
+    } catch (error) {
+      console.error('Error getting available conversation IDs:', error);
+      return [];
+    }
+  }
+
+  private async respondToRequest(requestId: string) {
+    try {
+      // Create a synthetic message for the existing request
+      // The conversation history will be loaded from the database based on requestId
+      const syntheticMessage: Message = {
+        id: requestId,
+        content: '[AI-initiated response to existing request]', // Placeholder content
+        timestamp: new Date()
+      };
+
+      // Use the existing performInference logic to generate and save the response
+      await this.performInference(syntheticMessage, false);
+
+    } catch (error) {
+      console.error(`❌ Error responding to request ${requestId}:`, error);
     }
   }
 
@@ -365,110 +365,6 @@ CONTENT: [your response/thought/content]`;
       console.error('Error getting recent conversation IDs:', error);
       return [];
     }
-  }
-
-  private buildConversationHistory(conversation: any): Array<{ role: string; content: string }> {
-    // Build message history from a specific conversation
-    const messages: Array<{ role: string; content: string }> = [];
-
-    // Add the original user message if available
-    if (conversation.inputMessage && conversation.inputMessage !== 'Input message to be populated') {
-      messages.push({
-        role: 'user',
-        content: conversation.inputMessage
-      });
-    }
-
-    // Add all responses (assistant messages)
-    if (conversation.responses) {
-      for (const response of conversation.responses) {
-        messages.push({
-          role: 'assistant',
-          content: response.content
-        });
-      }
-    }
-
-    return messages;
-  }
-
-  private shouldReflectBasedOnConversations(): boolean {
-    try {
-      const stats = getConversationStats();
-      if (!stats || stats.total_conversations === 0) return false;
-
-      // Reflect if we have recent conversations
-      const recentConversations = this.getRecentConversationIds();
-      if (recentConversations.length > 0) {
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Error checking reflection need:', error);
-      return false;
-    }
-  }
-
-  private hasUrgentConversations(): boolean {
-    try {
-      const recentConversations = this.getRecentConversationIds();
-      for (const convId of recentConversations.slice(0, 3)) {
-        const conversation = getConversation(convId);
-        if (conversation && conversation.responses && conversation.responses.length > 0) {
-          const lastResponse = conversation.responses[conversation.responses.length - 1];
-          if (lastResponse) {
-            // Urgent if response is very short (might need more depth) or contains urgent topics
-            const isVeryShort = lastResponse.content.length < 100;
-            const hasUrgentTopics = /error|problem|issue|urgent|critical/i.test(lastResponse.content);
-            if (isVeryShort || hasUrgentTopics) {
-              return true;
-            }
-          }
-        }
-      }
-      return false;
-    } catch (error) {
-      console.error('Error checking urgent conversations:', error);
-      return false;
-    }
-  }
-
-  private hasCriticalConversations(): boolean {
-    try {
-      const recentConversations = this.getRecentConversationIds();
-      for (const convId of recentConversations.slice(0, 2)) {
-        const conversation = getConversation(convId);
-        if (conversation && conversation.responses && conversation.responses.length > 0) {
-          const lastResponse = conversation.responses[conversation.responses.length - 1];
-          if (lastResponse) {
-            // Critical if very short responses or error-related content
-            const isExtremelyShort = lastResponse.content.length < 50;
-            const hasErrors = /error|fail|problem|issue|bug|crash/i.test(lastResponse.content);
-            if (isExtremelyShort || hasErrors) {
-              return true;
-            }
-          }
-        }
-      }
-      return false;
-    } catch (error) {
-      console.error('Error checking critical conversations:', error);
-      return false;
-    }
-  }
-
-  private switchToSmallerModel() {
-    if (!this.currentModel.includes('3b')) {
-      console.log(`Switching from ${this.currentModel} to gemma:3b due to low energy`);
-      this.currentModel = 'gemma:3b';
-      this.modelSwitches++;
-    }
-  }
-
-  private getEnergyConsumption(model: string): number {
-    // Energy consumption based on model size
-    // TODO: Eventually use token count or GPU utilization
-    return model.includes('3b') ? 5 : 15;
   }
 
   private truncateText(text: string, maxLength: number = 200): string {

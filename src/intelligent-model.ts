@@ -1,0 +1,146 @@
+import OpenAI from 'openai';
+import { LLMConfig } from './config';
+
+const client = new OpenAI({
+  baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
+  apiKey: process.env.OLLAMA_API_KEY || 'ollama' // Ollama doesn't require a real API key
+});
+
+export interface ModelResponse {
+  content: string;
+  energyConsumed: number;
+  modelUsed: string;
+}
+
+export class IntelligentModel {
+  private currentModel: string;
+  private readonly modelThresholds: Array<{ minEnergy: number; model: string }> = [
+    { minEnergy: 0, model: 'gemma:3b' },    // Small model for low energy
+    { minEnergy: 51, model: 'llama2:7b' }  // Large model for high energy
+  ];
+
+  constructor() {
+    this.currentModel = this.getModelForEnergy(100); // Start with high energy assumption
+  }
+
+  /**
+   * Generate a response using the appropriate model based on current energy levels
+   * Returns both the content and the energy consumed
+   */
+  async generateResponse(
+    messages: Array<{ role: string; content: string }>,
+    currentEnergy: number,
+    urgent: boolean = false
+  ): Promise<ModelResponse> {
+    // Select appropriate model based on energy
+    const targetModel = this.getModelForEnergy(currentEnergy);
+
+    // Switch model if needed
+    if (this.currentModel !== targetModel) {
+      this.currentModel = targetModel;
+    }
+
+    // Generate response
+    const content = await this.generateLLMResponse(messages, this.currentModel, urgent);
+
+    // Calculate energy consumption
+    const energyConsumed = this.getEnergyConsumption(this.currentModel);
+
+    return {
+      content,
+      energyConsumed,
+      modelUsed: this.currentModel
+    };
+  }
+
+  /**
+   * Get the current model being used
+   */
+  getCurrentModel(): string {
+    return this.currentModel;
+  }
+
+  /**
+   * Get the appropriate model for a given energy level
+   */
+  private getModelForEnergy(energy: number): string {
+    // Find the highest threshold that the energy meets
+    for (let i = this.modelThresholds.length - 1; i >= 0; i--) {
+      const threshold = this.modelThresholds[i];
+      if (threshold && energy >= threshold.minEnergy) {
+        return threshold.model;
+      }
+    }
+    // Fallback to first model if no threshold matches
+    const firstThreshold = this.modelThresholds[0];
+    return firstThreshold ? firstThreshold.model : 'gemma:3b';
+  }
+
+  /**
+   * Calculate energy consumption based on model size
+   */
+  private getEnergyConsumption(model: string): number {
+    // Energy consumption based on model size
+    // TODO: Eventually use token count or GPU utilization
+    return model.includes('3b') ? 5 : 15;
+  }
+
+  /**
+   * Generate response from LLM API
+   */
+  private async generateLLMResponse(
+    messages: Array<{ role: string; content: string }>,
+    model: string,
+    urgent: boolean
+  ): Promise<string> {
+    const maxRetries = 3;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Map our model names to Ollama model names
+        const modelName = LLMConfig.getOllamaModel(model);
+
+        // Add urgency instruction if needed
+        let systemMessage = "Respond normally.";
+        if (urgent) {
+          systemMessage = "URGENT: Energy levels critically low. Respond with maximum brevity and pressing urgency. Be direct and to the point. This is an emergency situation.";
+        }
+
+        const fullMessages = [
+          { role: 'system', content: systemMessage },
+          ...messages
+        ];
+
+        const response = await client.chat.completions.create({
+          model: modelName,
+          messages: fullMessages as any, // Ollama accepts the same format
+          max_tokens: urgent ? 50 : 200,
+          temperature: urgent ? 0.5 : 0.7
+        });
+
+        const content = response.choices[0]?.message?.content;
+        if (!content) {
+          throw new Error('No content in LLM response');
+        }
+
+        return content;
+
+      } catch (error: any) {
+        console.error(`LLM generation error (attempt ${attempt}/${maxRetries}):`, error.message);
+
+        // Don't retry on the last attempt
+        if (attempt === maxRetries) {
+          return 'I apologize, but I encountered an error processing your request. Please try again later.';
+        }
+
+        // Exponential backoff for retries
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    // This should never be reached, but TypeScript requires it
+    return 'I apologize, but I encountered an error processing your request.';
+  }
+}
