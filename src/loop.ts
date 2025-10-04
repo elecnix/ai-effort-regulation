@@ -94,13 +94,16 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           const now = Date.now();
 
           if (energy > 50) {
-            // High energy - continuous thinking and reflection
-            console.log(`🧠 AI thinking (Energy: ${energy})`);
+            // High energy - continuous thinking but less noisy
+            // Only log thinking occasionally to reduce spam
+            if (Math.random() < 0.2) { // 20% chance to log thinking
+              console.log(`🧠 Thinking at high energy (${energy})`);
+            }
             await this.unifiedCognitiveAction();
           } else if (energy > 20) {
             // Medium energy - occasional thinking (random chance)
             if (Math.random() < 0.3) { // 30% chance to think
-              console.log(`🧠 AI thinking (Energy: ${energy})`);
+              console.log(`🧠 Thinking (${energy})`);
               await this.unifiedCognitiveAction();
             } else {
               await this.sleep(1);
@@ -108,17 +111,17 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           } else if (energy > 0) {
             // Low energy - minimal thinking, mostly sleep
             if (Math.random() < 0.1) { // 10% chance to think
-              console.log(`🧠 AI thinking (Energy: ${energy})`);
+              console.log(`🧠 Brief thought (${energy})`);
               await this.unifiedCognitiveAction();
             } else {
               const sleepTime = 2;
-              console.log(`😴 Resting: ${sleepTime}s (Energy: ${energy})`);
+              console.log(`😴 Resting: ${sleepTime}s (${energy})`);
               await this.sleep(sleepTime);
             }
           } else {
             // Critical energy - sleep for recovery
             const sleepTime = 5;
-            console.log(`😴 Deep rest: ${sleepTime}s (Energy: ${energy})`);
+            console.log(`😴 Deep rest: ${sleepTime}s (${energy})`);
             await this.sleep(sleepTime);
           }
 
@@ -274,7 +277,7 @@ Please provide additional insights, follow-up thoughts, or deeper analysis on th
         // Send follow-up response to the same conversation
         await respond(randomConversationId, `FOLLOW-UP REFLECTION: ${reflectionResponse}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
 
-        console.log(`🔍 Added reflection to conversation`);
+        console.log(`🔍 Reflected on conversation`);
       }
 
     } catch (error: any) {
