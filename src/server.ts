@@ -80,7 +80,7 @@ app.post('/message', (req, res) => {
     // Add to message queue for the loop (loop will handle storing user message and generating response)
     messageQueue.push(message);
 
-    console.log(`📨 Received message: ${messageId} - "${sanitizedContent.substring(0, 100)}${sanitizedContent.length > 100 ? '...' : ''}"`);
+    console.log(`📨 Received: "${sanitizedContent.substring(0, 50)}${sanitizedContent.length > 50 ? '...' : ''}"`);
 
     res.json({
       status: 'received',

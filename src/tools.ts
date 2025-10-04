@@ -73,7 +73,7 @@ export function respond(requestId: string, userMessage: string, response: string
     // Update metadata
     updateConversationStmt.run(modelSwitches, requestId);
 
-    console.log(`Response saved to database for conversation ${requestId}`);
+    console.log(`💾 Saved response for ${requestId}`);
 
   } catch (error) {
     console.error('Error saving response to database:', error);

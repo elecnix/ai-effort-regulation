@@ -101,13 +101,14 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           const canThink = now - this.lastInternalThought >= this.internalThoughtInterval;
 
           if (energy > 20 && canThink) {
-            console.log(`🧠 Unified cognitive action (Energy: ${energy})`);
+            // Only log when starting a thinking session
+            console.log(`🧠 AI thinking (Energy: ${energy})`);
             await this.unifiedCognitiveAction();
             this.lastInternalThought = now;
           } else if (energy <= 20) {
             // Low energy - sleep more
             const sleepTime = energy > 0 ? 2 : 4;
-            console.log(`😴 Low energy sleep: ${sleepTime}s (Energy: ${energy})`);
+            console.log(`😴 Resting: ${sleepTime}s (Energy: ${energy})`);
             await this.sleep(sleepTime);
           } else {
             // Waiting for minimum interval - short sleep
@@ -171,7 +172,7 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
       // Use tool to respond
       await respond(message.id, message.content, response, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
 
-      console.log(`💬 Inference completed for message ${message.id} (Energy: ${this.energyRegulator.getEnergy()})`);
+      console.log(`💬 Processed: "${message.content.substring(0, 30)}..."`);
 
     } catch (error) {
       console.error(`❌ Inference error for message ${message.id} (Energy: ${this.energyRegulator.getEnergy()}):`, error);
@@ -221,19 +222,15 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
 
   private async performReflection() {
     try {
-      console.log(`🔍 Performing reflection on past conversations (Energy: ${this.energyRegulator.getEnergy()})`);
-
       // Get conversation statistics to understand patterns
       const stats = getConversationStats();
       if (!stats || stats.total_conversations === 0) {
-        console.log('No conversations to reflect on yet');
         return;
       }
 
       // Get a random recent conversation to reflect on
       const recentConversations = this.getRecentConversationIds();
       if (recentConversations.length === 0) {
-        console.log('No recent conversations found');
         return;
       }
 
@@ -241,7 +238,6 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
       const conversation = getConversation(randomConversationId);
 
       if (!conversation || conversation.responses.length === 0) {
-        console.log('Could not retrieve conversation for reflection');
         return;
       }
 
@@ -249,8 +245,6 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
       const shouldFollowUp = this.analyzeConversationForFollowUp(conversation);
 
       if (shouldFollowUp) {
-        console.log(`Reflecting on conversation: ${randomConversationId} (Energy: ${this.energyRegulator.getEnergy()})`);
-
         // Build conversation history for this specific conversation
         const conversationMessages = this.buildConversationHistory(conversation);
 
@@ -274,18 +268,16 @@ Please provide additional insights, follow-up thoughts, or deeper analysis on th
         // Send follow-up response to the same conversation
         await respond(randomConversationId, `FOLLOW-UP REFLECTION: ${reflectionResponse}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
 
-        console.log(`Generated follow-up reflection for conversation: ${randomConversationId} (Energy: ${this.energyRegulator.getEnergy()})`);
+        console.log(`🔍 Added reflection to conversation`);
       }
 
-    } catch (error) {
-      console.error(`❌ Error during reflection (Energy: ${this.energyRegulator.getEnergy()}):`, error);
+    } catch (error: any) {
+      console.error(`❌ Reflection error:`, error.message);
     }
   }
 
   private async unifiedCognitiveAction() {
     try {
-      console.log(`🤖 Unified cognitive action - letting LLM decide (Energy: ${this.energyRegulator.getEnergy()})`);
-
       // Build conversation history (rely on prompt caching for efficiency)
       const conversationHistory = this.buildUnifiedContext();
 
@@ -321,11 +313,11 @@ CONTENT: [your response/thought/content]`;
 
       const llmResponse = await generateResponse(messages, this.currentModel, false);
 
-      // Parse LLM decision
+      // Parse LLM decision and show concise result
       await this.executeLLMDecision(llmResponse);
 
     } catch (error) {
-      console.error(`❌ Error in unified cognitive action (Energy: ${this.energyRegulator.getEnergy()}):`, error);
+      console.error(`❌ Thinking error:`, error.message);
     }
   }
 
@@ -356,8 +348,9 @@ CONTENT: [your response/thought/content]`;
       const contentMatch = llmResponse.match(/CONTENT:\s*([\s\S]+)/i);
 
       if (!actionMatch) {
-        console.log('LLM did not specify an action, defaulting to internal thought');
-        console.log(`🤔 INTERNAL THOUGHT: ${llmResponse}`);
+        // Default to internal thought - show first 100 chars
+        const thought = llmResponse.substring(0, 100) + (llmResponse.length > 100 ? '...' : '');
+        console.log(`🤔 Thought: "${thought}"`);
         return;
       }
 
@@ -365,49 +358,44 @@ CONTENT: [your response/thought/content]`;
       const target = targetMatch ? targetMatch[1].trim() : null;
       const content = contentMatch ? contentMatch[1].trim() : llmResponse;
 
-      console.log(`🎯 LLM chose action: ${action} (Energy: ${this.energyRegulator.getEnergy()})`);
-
       switch (action) {
         case 'RESPOND_TO_MESSAGE':
           if (target && target !== 'none') {
             await respond(target, 'PLACEHOLDER', content, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
-            console.log(`📤 Responded to message ${target} (Energy: ${this.energyRegulator.getEnergy()})`);
-          } else {
-            console.log('No valid target for response');
+            console.log(`💬 Responded to: "${target}"`);
           }
           break;
 
         case 'GENERATE_THOUGHT':
-          console.log(`🤔 INTERNAL THOUGHT (Energy: ${this.energyRegulator.getEnergy()}): ${content}`);
+          // Show first 100 characters of the thought
+          const thought = content.substring(0, 100) + (content.length > 100 ? '...' : '');
+          console.log(`🤔 Thought: "${thought}"`);
           break;
 
         case 'REFLECT_ON_CONVERSATIONS':
           if (target && target !== 'none') {
-            // Add reflection as a response to the target conversation
             await respond(target, `FOLLOW-UP REFLECTION: ${content}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
-            console.log(`🔍 Added reflection to conversation ${target} (Energy: ${this.energyRegulator.getEnergy()})`);
+            console.log(`🔍 Reflected on: "${target}"`);
           } else {
-            // General reflection - could create a new "reflection" conversation
-            console.log(`🔍 GENERAL REFLECTION (Energy: ${this.energyRegulator.getEnergy()}): ${content}`);
+            console.log(`🔍 General reflection: "${content.substring(0, 80)}..."`);
           }
           break;
 
         case 'MAKE_TOOL_CALL':
-          // For now, just log the tool call intent
-          console.log(`🔧 TOOL CALL REQUEST (Energy: ${this.energyRegulator.getEnergy()}): ${content}`);
+          console.log(`🔧 Tool request: "${content.substring(0, 80)}..."`);
           break;
 
         case 'NO_ACTION':
-          console.log(`🤖 LLM chose no action - system is content (Energy: ${this.energyRegulator.getEnergy()})`);
+          // Don't log anything for no action - keep it quiet
           break;
 
         default:
-          console.log(`🤔 UNRECOGNIZED ACTION: ${action} (Energy: ${this.energyRegulator.getEnergy()}) - treating as internal thought`);
-          console.log(`🤔 INTERNAL THOUGHT (Energy: ${this.energyRegulator.getEnergy()}): ${content}`);
+          const defaultThought = content.substring(0, 100) + (content.length > 100 ? '...' : '');
+          console.log(`🤔 Thought: "${defaultThought}"`);
       }
 
-    } catch (error) {
-      console.error(`❌ Error executing LLM decision (Energy: ${this.energyRegulator.getEnergy()}):`, error);
+    } catch (error: any) {
+      console.error(`❌ Decision error:`, error.message);
     }
   }
 
