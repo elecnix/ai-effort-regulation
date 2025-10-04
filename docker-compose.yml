@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  ai-effort-regulation:
+    build: .
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
+      - OLLAMA_API_KEY=ollama
+      - ENERGY_REPLENISH_RATE=10
+      - MAX_MESSAGE_LENGTH=10000
+    volumes:
+      - ./conversations.db:/app/conversations.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  ollama_data:

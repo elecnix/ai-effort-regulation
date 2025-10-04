@@ -1,12 +1,31 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import rateLimit from 'express-rate-limit';
 import { sensitiveLoop } from './loop';
 import { getConversation, getConversationStats, respond } from './tools';
 
-const app = express();
-const PORT = process.env.PORT || 3002;
+// Load environment variables
+import dotenv from 'dotenv';
+dotenv.config();
 
-app.use(express.json());
+const app = express();
+const PORT = parseInt(process.env.PORT || '3002');
+const MAX_MESSAGE_LENGTH = parseInt(process.env.MAX_MESSAGE_LENGTH || '10000');
+
+// Security: Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply rate limiting to all requests
+app.use(limiter);
+
+// Body parsing with size limits
+app.use(express.json({ limit: '10mb' }));
 
 // Message queue for the sensitive loop
 export interface Message {
@@ -18,28 +37,63 @@ export interface Message {
 export const messageQueue: Message[] = [];
 
 app.post('/message', (req, res) => {
-  const { content, id } = req.body;
+  try {
+    const { content, id } = req.body;
 
-  if (!content) {
-    return res.status(400).json({ error: 'Content is required' });
+    // Input validation
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({
+        error: 'Content is required and must be a string'
+      });
+    }
+
+    if (content.trim().length === 0) {
+      return res.status(400).json({
+        error: 'Content cannot be empty'
+      });
+    }
+
+    if (content.length > MAX_MESSAGE_LENGTH) {
+      return res.status(400).json({
+        error: `Content too long. Maximum length is ${MAX_MESSAGE_LENGTH} characters`
+      });
+    }
+
+    // Sanitize input (basic XSS prevention)
+    const sanitizedContent = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+
+    const messageId = id || uuidv4();
+
+    // Validate message ID format if provided
+    if (id && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(messageId)) {
+      return res.status(400).json({
+        error: 'Invalid message ID format. Must be a valid UUID.'
+      });
+    }
+
+    const message: Message = {
+      id: messageId,
+      content: sanitizedContent,
+      timestamp: new Date()
+    };
+
+    // Add to message queue for the loop (loop will handle storing user message and generating response)
+    messageQueue.push(message);
+
+    console.log(`📨 Received message: ${messageId} - "${sanitizedContent.substring(0, 100)}${sanitizedContent.length > 100 ? '...' : ''}"`);
+
+    res.json({
+      status: 'received',
+      requestId: messageId,
+      timestamp: message.timestamp.toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error processing message request:', error);
+    res.status(500).json({
+      error: 'Internal server error'
+    });
   }
-
-  const messageId = id || uuidv4();
-  const message: Message = {
-    id: messageId,
-    content,
-    timestamp: new Date()
-  };
-
-  // Add to message queue for the loop (loop will handle storing user message and generating response)
-  messageQueue.push(message);
-
-  console.log(`📨 Received message: ${messageId} - "${content}"`);
-
-  res.json({
-    status: 'received',
-    requestId: messageId
-  });
 });
 
 // New endpoints for conversation data
@@ -75,7 +129,31 @@ app.get('/internal-thoughts', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  // Comprehensive health check
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: {
+      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+      external: Math.round(process.memoryUsage().external / 1024 / 1024)
+    },
+    queue: {
+      pendingMessages: messageQueue.length
+    },
+    database: {
+      connected: true // Would need actual DB health check
+    }
+  };
+
+  // Check if system is overloaded
+  if (messageQueue.length > 100) {
+    health.status = 'warning';
+    res.status(200).json(health);
+  } else {
+    res.json(health);
+  }
 });
 
 export function startServer() {

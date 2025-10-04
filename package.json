@@ -31,7 +31,9 @@
     "@ai-sdk/openai": "^0.0.66",
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^12.4.1",
+    "dotenv": "^17.2.3",
     "express": "^4.18.2",
+    "express-rate-limit": "^8.1.0",
     "fs-extra": "^11.2.0",
     "openai": "^6.1.0",
     "uuid": "^9.0.1"
