@@ -90,88 +90,22 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           const sleepTime = this.energyRegulator.getEnergy() < 0 ? 5 : 10; // Minimal cycles in urgent mode
           await this.sleep(sleepTime);
         } else {
-          // Pure energy-based decision making (no time throttling)
+          // Unified decision making: provide full context and let LLM decide action
           const energy = this.energyRegulator.getEnergy();
           const now = Date.now();
 
-          // High energy (>80): Always think, but alternate activities with minimum intervals
-          if (energy > 80) {
-            const canReflect = now - this.lastReflectionTime >= this.reflectionInterval;
-            const canThinkInternally = now - this.lastInternalThought >= this.internalThoughtInterval;
+          // Only proceed if minimum intervals are respected (anti-spam)
+          const canThink = now - this.lastInternalThought >= this.internalThoughtInterval;
 
-            // Prioritize internal thoughts for continuous development, fallback to reflection
-            if (canThinkInternally) {
-              await this.generateInternalThought();
-              this.lastInternalThought = now;
-            } else if (canReflect) {
-              await this.performReflection();
-              this.lastReflectionTime = now;
-            } else {
-              // Both on minimum cooldown - do whichever expires sooner
-              const reflectionWait = this.reflectionInterval - (now - this.lastReflectionTime);
-              const internalWait = this.internalThoughtInterval - (now - this.lastInternalThought);
-
-              if (reflectionWait <= internalWait) {
-                await this.performReflection();
-                this.lastReflectionTime = now;
-              } else {
-                await this.generateInternalThought();
-                this.lastInternalThought = now;
-              }
-            }
-          }
-          // Medium-high energy (60-80): Think when possible, but more conservative
-          else if (energy > 60) {
-            const canReflect = now - this.lastReflectionTime >= this.reflectionInterval;
-            const canThinkInternally = now - this.lastInternalThought >= this.internalThoughtInterval;
-
-            if (canThinkInternally || canReflect) {
-              if (canThinkInternally && (!canReflect || Math.random() < 0.6)) {
-                // Prefer internal thoughts 60% of the time when both available
-                await this.generateInternalThought();
-                this.lastInternalThought = now;
-              } else if (canReflect) {
-                await this.performReflection();
-                this.lastReflectionTime = now;
-              }
-            } else {
-              await this.sleep(1);
-            }
-          }
-          // Medium energy (40-60): Only think when really needed
-          else if (energy > 40) {
-            const canReflect = now - this.lastReflectionTime >= this.reflectionInterval;
-
-            if (canReflect && this.shouldReflectBasedOnConversations()) {
-              await this.performReflection();
-              this.lastReflectionTime = now;
-            } else {
-              await this.sleep(1);
-            }
-          }
-          // Low-medium energy (20-40): Minimal thinking
-          else if (energy > 20) {
-            const canReflect = now - this.lastReflectionTime >= this.reflectionInterval;
-
-            if (canReflect && this.hasUrgentConversations()) {
-              await this.performReflection();
-              this.lastReflectionTime = now;
-            } else {
-              await this.sleep(2);
-            }
-          }
-          // Low energy (0-20): Only urgent thinking
-          else if (energy > 0) {
-            if (this.hasCriticalConversations() && now - this.lastReflectionTime >= this.reflectionInterval) {
-              await this.performReflection();
-              this.lastReflectionTime = now;
-            } else {
-              await this.sleep(3);
-            }
-          }
-          // Very low energy (<0): Sleep to recover
-          else {
-            await this.sleep(5);
+          if (energy > 20 && canThink) {
+            await this.unifiedCognitiveAction();
+            this.lastInternalThought = now;
+          } else if (energy <= 20) {
+            // Low energy - sleep more
+            await this.sleep(energy > 0 ? 2 : 4);
+          } else {
+            // Waiting for minimum interval - short sleep
+            await this.sleep(1);
           }
         }
 
@@ -338,47 +272,147 @@ Please provide additional insights, follow-up thoughts, or deeper analysis on th
     }
   }
 
-  private async generateInternalThought() {
+  private async unifiedCognitiveAction() {
     try {
-      console.log('Generating internal thought...');
+      console.log('🤖 Unified cognitive action - letting LLM decide...');
 
-      // Build context from recent internal monologue
-      const recentThoughts = this.internalMonologue.slice(-3); // Last 3 internal thoughts
-      const thoughtContext = recentThoughts.map(thought =>
-        `[${thought.timestamp.toISOString()}] ${thought.thought}`
-      ).join('\n');
+      // Gather complete context
+      const fullContext = this.buildUnifiedContext();
 
-      // Also include some recent external interactions for inspiration
-      const recentHistory = this.history.slice(-2).map(entry =>
-        `${entry.role}: ${entry.content.substring(0, 100)}${entry.content.length > 100 ? '...' : ''}`
-      ).join('\n');
+      // Present to LLM with agency to choose action
+      const agencyPrompt = `You are an AI with full cognitive agency. Based on the complete context below, decide what action to take:
 
-      const thoughtPrompt = `You are an AI engaging in internal reflection. Here is your recent thought process:
+CONTEXT:
+${fullContext}
 
-${thoughtContext ? `Recent internal thoughts:\n${thoughtContext}\n\n` : ''}Recent external interactions:
-${recentHistory}
+AVAILABLE ACTIONS:
+1. RESPOND_TO_MESSAGE: Choose a pending message and provide a thoughtful response
+2. GENERATE_THOUGHT: Create an internal thought exploring ideas or connections
+3. REFLECT_ON_CONVERSATIONS: Analyze past conversations and provide insights
+4. MAKE_TOOL_CALL: Use a tool to perform an action (like checking stats)
+5. NO_ACTION: If nothing needs to be done right now
 
-Based on these thoughts and interactions, generate a new internal thought. This should be a natural continuation of your thinking process - perhaps exploring implications, making connections, or developing ideas further. Keep it concise but meaningful, like a natural thought progression.`;
+Choose ONE action and provide:
+- Action type
+- Target (message ID, conversation ID, etc. if applicable)
+- Content/Response/Thought
 
-      const thoughtMessages = [
-        { role: 'system', content: 'You are an AI maintaining an internal monologue. Generate natural, flowing thoughts that build on previous thinking.' },
-        { role: 'user', content: thoughtPrompt }
+Format your response as:
+ACTION: [action_type]
+TARGET: [target_id or "none"]
+CONTENT: [your response/thought/content]`;
+
+      const messages = [
+        { role: 'system', content: 'You are an autonomous AI with full decision-making capability. Choose the most appropriate action based on current context and energy state.' },
+        { role: 'user', content: agencyPrompt }
       ];
 
-      const internalThought = await generateResponse(thoughtMessages, this.currentModel, false);
+      const llmResponse = await generateResponse(messages, this.currentModel, false);
 
-      // Print to console instead of storing in database
-      console.log(`🤔 INTERNAL THOUGHT: ${internalThought}`);
-
-      // Keep track of thought count for monitoring (but don't store content)
-      this.internalMonologue.push({
-        thought: '', // Empty content - not stored
-        timestamp: new Date(),
-        energyLevel: this.energyRegulator.getEnergy()
-      });
+      // Parse LLM decision
+      await this.executeLLMDecision(llmResponse);
 
     } catch (error) {
-      console.error('Error generating internal thought:', error);
+      console.error('Error in unified cognitive action:', error);
+    }
+  }
+
+  private buildUnifiedContext(): string {
+    const energy = this.energyRegulator.getEnergy();
+    const stats = getConversationStats();
+
+    let context = `CURRENT STATE:
+- Energy Level: ${energy} (${this.energyRegulator.getStatus()})
+- System Stats: ${stats ? `${stats.total_conversations} conversations, ${stats.total_responses} responses` : 'No stats available'}
+- Recent Activity: ${this.history.slice(-3).map(h => `${h.role}: ${h.content.substring(0, 50)}...`).join('; ')}
+
+PENDING MESSAGES:`;
+
+    // Check for pending messages (this is a simplified check - in reality we'd check the messageQueue)
+    // For now, we'll use recent conversations as context
+    const recentConversations = this.getRecentConversationIds();
+    if (recentConversations.length > 0) {
+      context += '\nRecent Conversations:';
+      recentConversations.slice(0, 3).forEach(id => {
+        const conv = getConversation(id);
+        if (conv) {
+          context += `\n- ${id}: "${conv.inputMessage?.substring(0, 100) || 'No message'}" (${conv.responses.length} responses)`;
+        }
+      });
+    } else {
+      context += '\n- No pending messages';
+    }
+
+    context += '\n\nINTERNAL STATE:';
+    context += `\n- Thought Count: ${this.internalMonologue.length}`;
+    if (this.internalMonologue.length > 0) {
+      const lastThought = this.internalMonologue[this.internalMonologue.length - 1];
+      context += `\n- Last Thought Energy: ${lastThought.energyLevel}`;
+    }
+
+    return context;
+  }
+
+  private async executeLLMDecision(llmResponse: string) {
+    try {
+      // Parse the LLM response
+      const actionMatch = llmResponse.match(/ACTION:\s*(.+)/i);
+      const targetMatch = llmResponse.match(/TARGET:\s*(.+)/i);
+      const contentMatch = llmResponse.match(/CONTENT:\s*([\s\S]+)/i);
+
+      if (!actionMatch) {
+        console.log('LLM did not specify an action, defaulting to internal thought');
+        console.log(`🤔 INTERNAL THOUGHT: ${llmResponse}`);
+        return;
+      }
+
+      const action = actionMatch[1].trim().toUpperCase();
+      const target = targetMatch ? targetMatch[1].trim() : null;
+      const content = contentMatch ? contentMatch[1].trim() : llmResponse;
+
+      console.log(`🎯 LLM chose action: ${action}`);
+
+      switch (action) {
+        case 'RESPOND_TO_MESSAGE':
+          if (target && target !== 'none') {
+            await respond(target, 'PLACEHOLDER', content, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
+            console.log(`📤 Responded to message ${target}`);
+          } else {
+            console.log('No valid target for response');
+          }
+          break;
+
+        case 'GENERATE_THOUGHT':
+          console.log(`🤔 INTERNAL THOUGHT: ${content}`);
+          break;
+
+        case 'REFLECT_ON_CONVERSATIONS':
+          if (target && target !== 'none') {
+            // Add reflection as a response to the target conversation
+            await respond(target, `FOLLOW-UP REFLECTION: ${content}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
+            console.log(`🔍 Added reflection to conversation ${target}`);
+          } else {
+            // General reflection - could create a new "reflection" conversation
+            console.log(`🔍 GENERAL REFLECTION: ${content}`);
+          }
+          break;
+
+        case 'MAKE_TOOL_CALL':
+          // For now, just log the tool call intent
+          console.log(`🔧 TOOL CALL REQUEST: ${content}`);
+          break;
+
+        case 'NO_ACTION':
+          console.log('🤖 LLM chose no action - system is content');
+          break;
+
+        default:
+          console.log(`🤔 UNRECOGNIZED ACTION: ${action} - treating as internal thought`);
+          console.log(`🤔 INTERNAL THOUGHT: ${content}`);
+      }
+
+    } catch (error) {
+      console.error('Error executing LLM decision:', error);
     }
   }
 
