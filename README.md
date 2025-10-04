@@ -1,5 +1,7 @@
 # AI Effort Regulation Demo
 
+[![Build Status](https://github.com/elecnix/ai-effort-regulation/actions/workflows/build.yml/badge.svg)](https://github.com/elecnix/ai-effort-regulation/actions)
+
 An intelligent system that demonstrates **adaptive AI behavior** with energy-aware cognitive processing, reflection capabilities, and dynamic model switching.
 
 ## 🎯 Goal
