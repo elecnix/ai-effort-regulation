@@ -36,27 +36,30 @@ export interface Message {
 
 export const messageQueue: Message[] = [];
 
-app.post('/message', (req, res) => {
+app.post('/message', function(req: express.Request, res: express.Response): void {
   try {
     const { content, id } = req.body;
 
     // Input validation
     if (!content || typeof content !== 'string') {
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Content is required and must be a string'
       });
+      return;
     }
 
     if (content.trim().length === 0) {
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Content cannot be empty'
       });
+      return;
     }
 
     if (content.length > MAX_MESSAGE_LENGTH) {
-      return res.status(400).json({
+      res.status(400).json({
         error: `Content too long. Maximum length is ${MAX_MESSAGE_LENGTH} characters`
       });
+      return;
     }
 
     // Sanitize input (basic XSS prevention)
@@ -66,9 +69,10 @@ app.post('/message', (req, res) => {
 
     // Validate message ID format if provided
     if (id && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(messageId)) {
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Invalid message ID format. Must be a valid UUID.'
       });
+      return;
     }
 
     const message: Message = {
@@ -93,23 +97,30 @@ app.post('/message', (req, res) => {
     res.status(500).json({
       error: 'Internal server error'
     });
+    return;
   }
 });
 
 // New endpoints for conversation data
-app.get('/conversations/:requestId', (req, res) => {
+app.get('/conversations/:requestId', function(req: express.Request, res: express.Response): void {
   try {
     const { requestId } = req.params;
+    if (!requestId) {
+      res.status(400).json({ error: 'requestId parameter is required' });
+      return;
+    }
     const conversation = getConversation(requestId);
 
     if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
+      res.status(404).json({ error: 'Conversation not found' });
+      return;
     }
 
     res.json(conversation);
   } catch (error) {
     console.error('Error retrieving conversation:', error);
     res.status(500).json({ error: 'Internal server error' });
+    return;
   }
 });
 

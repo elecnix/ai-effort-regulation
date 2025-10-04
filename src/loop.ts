@@ -94,15 +94,10 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
 
           if (energy > 50) {
             // High energy - continuous thinking but less noisy
-            // Only log thinking occasionally to reduce spam
-            if (Math.random() < 0.2) { // 20% chance to log thinking
-              console.log(`🧠 Thinking at high energy (${energy})`);
-            }
             await this.unifiedCognitiveAction();
           } else if (energy > 20) {
             // Medium energy - occasional thinking (random chance)
             if (Math.random() < 0.3) { // 30% chance to think
-              console.log(`🧠 Thinking (${energy})`);
               await this.unifiedCognitiveAction();
             } else {
               await this.sleep(1);
@@ -110,7 +105,6 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           } else if (energy > 0) {
             // Low energy - minimal thinking, mostly sleep
             if (Math.random() < 0.1) { // 10% chance to think
-              console.log(`🧠 Brief thought (${energy})`);
               await this.unifiedCognitiveAction();
             } else {
               const sleepTime = 2;
@@ -229,65 +223,6 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
     this.energyRegulator.replenishEnergy(seconds);
   }
 
-  private async performReflection() {
-    try {
-      // Get conversation statistics to understand patterns
-      const stats = getConversationStats();
-      if (!stats || stats.total_conversations === 0) {
-        return;
-      }
-
-      // Get a random recent conversation to reflect on
-      const recentConversations = this.getRecentConversationIds();
-      if (recentConversations.length === 0) {
-        return;
-      }
-
-      const randomConversationId = recentConversations[Math.floor(Math.random() * Math.min(recentConversations.length, 5))];
-      if (!randomConversationId) {
-        return;
-      }
-
-      const conversation = getConversation(randomConversationId);
-
-      if (!conversation || !conversation.responses || conversation.responses.length === 0) {
-        return;
-      }
-
-      // Analyze the conversation and decide if follow-up is needed
-      const shouldFollowUp = this.analyzeConversationForFollowUp(conversation);
-
-      if (shouldFollowUp) {
-        // Build conversation history for this specific conversation
-        const conversationMessages = this.buildConversationHistory(conversation);
-
-        // Create reflection prompt with current energy context
-        const currentEnergy = this.energyRegulator.getEnergy();
-        const energyStatus = this.energyRegulator.getStatus();
-
-        const reflectionPrompt = `Current energy level: ${currentEnergy} (${energyStatus})
-
-You are reflecting on the conversation above. The last message was: "${conversation.responses[conversation.responses.length - 1].content}"
-
-Please provide additional insights, follow-up thoughts, or deeper analysis on this topic. Keep your response concise but meaningful.`;
-
-        const messages = [
-          ...conversationMessages,
-          { role: 'user', content: reflectionPrompt }
-        ];
-
-        const reflectionResponse = await generateResponse(messages, this.currentModel, false);
-
-        // Send follow-up response to the same conversation
-        await respond(randomConversationId, `PLACEHOLDER`, `FOLLOW-UP REFLECTION: ${reflectionResponse}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
-
-        console.log(`🔍 Reflected on conversation`);
-      }
-
-    } catch (error: any) {
-      console.error(`❌ Reflection error:`, error.message);
-    }
-  }
 
   private async unifiedCognitiveAction() {
     try {
@@ -359,16 +294,24 @@ CONTENT: [your response/thought/content]`;
       const targetMatch = llmResponse.match(/TARGET:\s*(.+)/i);
       const contentMatch = llmResponse.match(/CONTENT:\s*([\s\S]+)/i);
 
+      const getEnergyIndicator = (energy: number) => {
+        const level = Math.min(7, Math.floor(energy / 12.5));
+        return ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'][level];
+      };
+
       if (!actionMatch) {
         // Default to internal thought - show first 100 chars
         const thought = llmResponse.substring(0, 100) + (llmResponse.length > 100 ? '...' : '');
-        console.log(`🤔 Thought: "${thought}"`);
+        const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
+        console.log(`${indicator} Thought: "${thought}"`);
         return;
       }
 
       const action = actionMatch[1]?.trim().toUpperCase();
+
       if (!action) {
-        console.log(`🤔 Thought: "${llmResponse.substring(0, 100)}..."`);
+        const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
+        console.log(`${indicator} Thought: "${llmResponse.substring(0, 200)}..."`);
         return;
       }
 
@@ -379,16 +322,15 @@ CONTENT: [your response/thought/content]`;
         case 'GENERATE_THOUGHT':
           // Show first 200 characters of the thought
           const thought = content.substring(0, 200) + (content.length > 200 ? '...' : '');
-          console.log(`🤔 Thought: "${thought}"`);
+          const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
+          console.log(`${indicator} Thought: "${thought}"`);
           break;
 
         case 'REFLECT_ON_CONVERSATIONS':
-          if (target && target !== 'none') {
+          if (target && target.toLowerCase() !== 'none') {
             await respond(target, 'PLACEHOLDER', `FOLLOW-UP REFLECTION: ${content}`, this.energyRegulator.getEnergy(), this.currentModel, this.modelSwitches);
-            console.log(`🔍 Reflected on: "${target}"`);
-          } else {
-            console.log(`🔍 General reflection completed`);
           }
+          console.log(`🔍 Reflection: ${content.substring(0, 200)}...`);
           break;
 
         case 'MAKE_TOOL_CALL':
@@ -402,7 +344,8 @@ CONTENT: [your response/thought/content]`;
         default:
           // If LLM chooses an invalid action, treat it as a thought
           const fallbackThought = content.substring(0, 200) + (content.length > 200 ? '...' : '');
-          console.log(`🤔 Thought: "${fallbackThought}"`);
+          const indicatorFallback = getEnergyIndicator(this.energyRegulator.getEnergy());
+          console.log(`${indicatorFallback} Thought: "${fallbackThought}"`);
       }
 
     } catch (error: any) {
@@ -418,21 +361,6 @@ CONTENT: [your response/thought/content]`;
       console.error('Error getting recent conversation IDs:', error);
       return [];
     }
-  }
-
-  private analyzeConversationForFollowUp(conversation: any): boolean {
-    // Analyze if this conversation would benefit from follow-up
-    const lastResponse = conversation.responses[conversation.responses.length - 1];
-
-    // Follow up if:
-    // - Response was short (might need more depth)
-    // - Contains certain keywords that suggest complexity
-    // - Recent conversation (within last hour)
-    const isShortResponse = lastResponse.content.length < 200;
-    const hasComplexTopics = /quantum|physics|ai|machine.learning|philosophy|evolution/i.test(lastResponse.content);
-    const isRecent = new Date(lastResponse.timestamp) > new Date(Date.now() - 3600000); // Last hour
-
-    return isShortResponse || hasComplexTopics || (isRecent && Math.random() < 0.3); // 30% chance for recent convos
   }
 
   private buildConversationHistory(conversation: any): Array<{ role: string; content: string }> {
@@ -465,13 +393,10 @@ CONTENT: [your response/thought/content]`;
       const stats = getConversationStats();
       if (!stats || stats.total_conversations === 0) return false;
 
-      // Reflect if we have conversations with complex topics or recent activity
+      // Reflect if we have recent conversations
       const recentConversations = this.getRecentConversationIds();
-      for (const convId of recentConversations.slice(0, 5)) {
-        const conversation = getConversation(convId);
-        if (conversation && this.analyzeConversationForFollowUp(conversation)) {
-          return true;
-        }
+      if (recentConversations.length > 0) {
+        return true;
       }
       return false;
     } catch (error) {
