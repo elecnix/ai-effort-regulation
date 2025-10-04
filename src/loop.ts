@@ -400,14 +400,14 @@ CONTENT: [your response/thought/content]`;
           break;
 
         default:
-          const defaultThought = content.substring(0, 100) + (content.length > 100 ? '...' : '');
-          console.log(`🤔 Thought: "${defaultThought}"`);
+          // If LLM chooses an invalid action, treat it as a thought
+          const fallbackThought = content.substring(0, 200) + (content.length > 200 ? '...' : '');
+          console.log(`🤔 Thought: "${fallbackThought}"`);
       }
 
     } catch (error: any) {
       console.error(`❌ Decision error:`, error?.message || error);
     }
-  }
 
   private getRecentConversationIds(): string[] {
     try {
