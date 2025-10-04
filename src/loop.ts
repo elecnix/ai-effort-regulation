@@ -79,7 +79,6 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
   private async runLoop() {
     while (this.isRunning) {
       try {
-        // Check for critical energy levels (< -50) - explicit throttling
         if (this.energyRegulator.getEnergy() < -50) {
           console.log(`⚠️ Critical energy (${this.energyRegulator.getEnergy()}) - forced recovery sleep`);
           await this.sleep(10);
@@ -89,7 +88,7 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
         // Check for new messages
         const newMessages = messageQueue.splice(0); // Get all pending messages
 
-        // Process new messages
+        // Process new messages (add to history)
         for (const message of newMessages) {
           this.addToHistory({
             role: 'user',
@@ -99,15 +98,8 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
           });
         }
 
-        if (newMessages.length > 0) {
-          // Process all pending messages - let LLM decide based on energy
-          for (const message of newMessages) {
-            await this.performInference(message, false);
-          }
-        } else {
-          // No messages - autonomous cognitive action (LLM decides what to do)
-          await this.unifiedCognitiveAction();
-        }
+        // Always perform autonomous cognitive action (LLM decides what to do)
+        await this.unifiedCognitiveAction();
 
         // Maintain sliding window history (keep last 100 entries for better context)
         if (this.history.length > this.MAX_HISTORY_LENGTH) {
@@ -165,7 +157,7 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
       // Use tool to respond
       await respond(message.id, message.content, modelResponse.content, this.energyRegulator.getEnergy(), modelResponse.modelUsed, this.modelSwitches);
 
-      console.log(`💬 Processed: "${this.truncateText(message.content, 30)}..."`);
+      console.log(`💬 Processed: "${this.truncateText(message.content)}..."`);
 
     } catch (error) {
       console.error(`❌ Inference error for message ${message.id} (Energy: ${this.energyRegulator.getEnergy()}):`, error);
@@ -208,7 +200,6 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
   }
 
   private async sleep(seconds: number) {
-    //console.debug(`Sleeping for ${seconds} seconds to replenish energy`);
     await new Promise(resolve => setTimeout(resolve, seconds * 1000));
     this.energyRegulator.replenishEnergy(seconds);
   }
@@ -225,18 +216,44 @@ You have access to a 'respond' tool to reply to specific request IDs.`,
 
       const agencyPrompt = `Current energy level: ${currentEnergy} (${energyStatus})
 
-You have access to past conversation history above. Choose your next action:
+ENERGY GUIDANCE:
+- Energy > 50: Normal operation, can perform complex tasks
+- Energy 20-50: Prefer simpler tasks, consider SLEEP for recovery
+- Energy 0-20: Recommend SLEEP, use short cycles for any urgent tasks
+- Energy < 0: URGENT MODE - SLEEP in minimal cycles, be very urgent/pressing
 
-REFLECT: Analyze past conversations and generate insights
-SLEEP: Rest to replenish energy (specify seconds: 1-10)
-RESPOND: Reply to a specific pending request (specify request ID)
+Examples:
 
-Respond with JUST the action and parameter.
-Examples: REFLECT or SLEEP: 3 or RESPOND: abc-123-def
+# Thinking
+
+To think, just respond with your thoughts:
+
+\`\`\`
+I feel great, I'm ready to help my user with anything!
+\`\`\`
+
+# SLEEP
+
+When you need to rest, type "SLEEP: <seconds>" to rest to replenish energy (specify seconds: 1-10). For example:
+
+\`\`\`
+SLEEP: 5
+\`\`\`
+
+# RESPOND
+
+To respond to a specific pending request, type "RESPOND: <requestId>" before providing the response. For example:
+
+\`\`\`
+RESPOND: 12345
+Interesting question. Let me think...
+\`\`\`
+
+You have access to past conversation history above.
 
 Available conversation IDs: ${this.getAvailableConversationIds().join(', ')}
 
-What should you do?`;
+Your response:`;
 
       const messages = [
         ...conversationHistory, // Full conversation history (cached)
@@ -281,7 +298,7 @@ What should you do?`;
       const cleanResponse = llmResponse.trim().toUpperCase();
 
       const getEnergyIndicator = (energy: number) => {
-        const level = Math.min(7, Math.floor(energy / 12.5));
+        const level = Math.max(0, Math.min(7, Math.floor(energy / 12.5)));
         const symbol = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'][level];
 
         // Color gradient: red (low) to green (high)
@@ -297,28 +314,30 @@ What should you do?`;
 
       if (cleanResponse.startsWith('REFLECT')) {
         const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-        console.log(`${indicator} Reflecting: "${this.truncateText(cleanResponse.replace(/^REFLECT/i, '').trim())}"`);
+        console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(llmResponse.trim())}`);
       } else if (cleanResponse.includes('SLEEP:')) {
         const sleepMatch = cleanResponse.match(/SLEEP:\s*(\d+)/i);
         const sleepTime = sleepMatch && sleepMatch[1] ? parseInt(sleepMatch[1]) : 1;
         const clampedSleep = Math.max(1, Math.min(10, sleepTime));
         console.log(`😴 LLM sleep: ${clampedSleep}s`);
+        console.log(`🤔 LLM thought: ${this.truncateText(llmResponse.trim())}`);
         await this.sleep(clampedSleep);
       } else if (cleanResponse.includes('RESPOND:')) {
         const respondMatch = cleanResponse.match(/RESPOND:\s*(.+)/i);
         const requestId = respondMatch && respondMatch[1] ? respondMatch[1].trim() : null;
         if (requestId) {
           console.log(`💬 AI choosing to respond to request: ${requestId}`);
+          console.log(`🤔 LLM thought: ${this.truncateText(llmResponse.trim())}`);
           await this.respondToRequest(requestId);
         } else {
           // Default to reflect if unclear
           const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-          console.log(`${indicator} Reflecting: "${this.truncateText(cleanResponse)}"`);
+          console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(llmResponse.trim())}`);
         }
       } else {
         // Default to reflect if unclear
         const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-        console.log(`${indicator} Reflecting: "${this.truncateText(cleanResponse)}"`);
+        console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(llmResponse.trim())}`);
       }
 
     } catch (error: any) {
@@ -368,7 +387,8 @@ What should you do?`;
   }
 
   private truncateText(text: string, maxLength: number = 200): string {
-    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+    const processedText = text.replace(/\n/g, '');
+    return processedText.length > maxLength ? processedText.substring(0, maxLength) + '...' : processedText;
   }
 }
 

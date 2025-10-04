@@ -13,7 +13,6 @@ export class EnergyRegulator {
   }
 
   replenishEnergy(seconds: number): void {
-    const oldEnergy = this.energy;
     this.energy = Math.min(this.maxEnergy, this.energy + (seconds * this.replenishRate));
   }
 
