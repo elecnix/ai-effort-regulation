@@ -1,9 +1,10 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { sensitiveLoop } from './loop';
+import { getConversation, getConversationStats } from './tools';
 
 const app = express();
-const PORT = process.env.PORT || 3002; // Changed to 3002
+const PORT = process.env.PORT || 3002;
 
 app.use(express.json());
 
@@ -14,7 +15,7 @@ export interface Message {
   timestamp: Date;
 }
 
-export const messageQueue: Message[] = []; // Clear queue on startup
+export const messageQueue: Message[] = [];
 
 app.post('/message', (req, res) => {
   const { content, id } = req.body;
@@ -39,6 +40,23 @@ app.post('/message', (req, res) => {
     status: 'received',
     requestId: messageId
   });
+});
+
+// New endpoints for conversation data
+app.get('/conversations/:requestId', (req, res) => {
+  const { requestId } = req.params;
+  const conversation = getConversation(requestId);
+
+  if (!conversation) {
+    return res.status(404).json({ error: 'Conversation not found' });
+  }
+
+  res.json(conversation);
+});
+
+app.get('/stats', (req, res) => {
+  const stats = getConversationStats();
+  res.json(stats || { error: 'Could not retrieve statistics' });
 });
 
 app.get('/health', (req, res) => {

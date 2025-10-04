@@ -18,6 +18,7 @@ build/
 
 # Generated data
 conversations/
+conversations.db
 logs/
 *.log
 
