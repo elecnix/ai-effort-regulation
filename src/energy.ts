@@ -17,12 +17,12 @@ export class EnergyRegulator {
   }
 
   consumeEnergy(amount: number): void {
-    this.energy = Math.max(this.minEnergy, this.energy - amount);
+    this.energy = Math.round(Math.max(this.minEnergy, this.energy - amount));
   }
 
   async sleep(seconds: number): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, seconds * 1000));
-    this.energy = Math.min(this.maxEnergy, this.energy + (seconds * this.replenishRate));
+    this.energy = Math.round(Math.min(this.maxEnergy, this.energy + (seconds * this.replenishRate)));
   }
 
   isDepleted(): boolean {

@@ -116,12 +116,12 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
         const recentCompleted = this.inbox.getRecentCompletedConversations(5);
         conversationsToInclude = recentCompleted.map(conv => ({
           id: conv.requestId,
-          requestMessage: conv.inputMessage || '',
+          requestMessage: `${conv.inputMessage || ''} [Energy consumed: ${conv.metadata.totalEnergyConsumed.toFixed(1)} units, ${conv.responses.length} responses]`,
           responseMessages: conv.responses.map(r => r.content),
           timestamp: new Date() // Use current time for ordering
         }));
         instruction = conversationsToInclude.length > 0
-          ? `Review the recent conversations above. Use the select_conversation tool to choose one for focused improvement, or use await_energy to manage energy.`
+          ? `Review the recent conversations above. Use the select_conversation tool to choose one for adding to, or use await_energy to manage energy.`
           : 'No recent conversations to review. You can think, reflect, or manage your energy as needed.';
       }
 
@@ -199,7 +199,7 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
     const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
     message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${totalUnansweredCount} total unanswered conversations.`;
     if (conversationsToInclude.length > 0) {
-      message = `${message}\nYou are currently focused on one conversation. Use the respond tool to answer it, or use await_energy to manage your energy.`;
+      message = `${message}\nYou are currently focused on one conversation. Use the respond tool to add a response, or use await_energy to manage your energy.`;
     }
     if (currentEnergy < 20) {
       message = `${message}\nTo await a higher energy level, use the await_energy tool: await_energy(targetLevel).`;
@@ -296,7 +296,7 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
 
     const conversationsToInclude = [{
       id: conversation.requestId,
-      requestMessage: conversation.inputMessage || '',
+      requestMessage: `${conversation.inputMessage || ''} [Energy consumed: ${conversation.metadata.totalEnergyConsumed.toFixed(1)} units, ${conversation.responses.length} responses]`,
       responseMessages: conversation.responses.map(r => r.content),
       timestamp: new Date()
     }];
@@ -308,7 +308,7 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
       this.getEphemeralSystemMessage(conversationsToInclude, 0), // 0 unanswered since we're reviewing completed
       {
         role: 'user',
-        content: `You have selected this conversation for focused improvement. Add to, improve, or follow up on the previous response using the respond tool, or use await_energy to manage your energy.`
+        content: `You have selected this conversation for focused improvement. To add a response to the previous responses, use the respond tool, or use await_energy to manage your energy.`
       }
     ];
 

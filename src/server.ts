@@ -120,14 +120,42 @@ app.get('/conversations', function(req: express.Request, res: express.Response):
   try {
     const limit = parseInt(req.query.limit as string) || 10; // Default to 10 recent conversations
     const globalLoop = global.sensitiveLoop;
-    const conversations = globalLoop && globalLoop.inbox ? globalLoop.inbox.getRecentConversations(limit) : [];
+    const conversations = globalLoop && globalLoop.inbox ? globalLoop.inbox.getRecentCompletedConversations(limit) : [];
+
+    // Format conversations with energy consumption info
+    const formattedConversations = conversations.map(conv => ({
+      id: conv.requestId,
+      requestMessage: conv.inputMessage,
+      responseMessages: conv.responses.map(r => r.content),
+      timestamp: new Date(), // Use current time for ordering
+      energyConsumed: conv.metadata.totalEnergyConsumed,
+      responseCount: conv.responses.length
+    }));
 
     res.json({
-      conversations,
-      total: conversations.length
+      conversations: formattedConversations,
+      total: formattedConversations.length
     });
   } catch (error) {
     console.error('Error retrieving recent conversations:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+app.get('/stats', function(req: express.Request, res: express.Response): void {
+  try {
+    const globalLoop = global.sensitiveLoop;
+    const stats = globalLoop && globalLoop.inbox ? globalLoop.inbox.getConversationStats() : null;
+
+    if (!stats) {
+      res.status(500).json({ error: 'Unable to retrieve statistics' });
+      return;
+    }
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Error retrieving conversation stats:', error);
     res.status(500).json({ error: 'Internal server error' });
     return;
   }
@@ -158,6 +186,10 @@ app.get('/conversations/:requestId', function(req: express.Request, res: express
 
 app.get('/health', (req, res) => {
   // Comprehensive health check
+  const globalLoop = global.sensitiveLoop;
+  const currentEnergy = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getEnergy() : 0;
+  const energyStatus = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getStatus() : 'unknown';
+
   const health = {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -170,6 +202,11 @@ app.get('/health', (req, res) => {
     queue: {
       pendingMessages: messageQueue.length
     },
+    energy: {
+      current: currentEnergy,
+      percentage: Math.round(Math.min(100, Math.max(0, currentEnergy))),
+      status: energyStatus
+    },
     database: {
       connected: true // Would need actual DB health check
     }
@@ -178,6 +215,9 @@ app.get('/health', (req, res) => {
   // Check if system is overloaded
   if (messageQueue.length > 100) {
     health.status = 'warning';
+    res.status(200).json(health);
+  } else if (currentEnergy < 20) {
+    health.status = 'low_energy';
     res.status(200).json(health);
   } else {
     res.json(health);

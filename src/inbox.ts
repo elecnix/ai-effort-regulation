@@ -85,7 +85,8 @@ export class Inbox {
     `);
     this.updateConversationStmt = this.db.prepare(`
       UPDATE conversations
-      SET sleep_cycles = sleep_cycles + 1
+      SET sleep_cycles = sleep_cycles + 1,
+          total_energy_consumed = total_energy_consumed + ?
       WHERE request_id = ?
     `);
     this.insertResponseStmt = this.db.prepare(`
@@ -194,7 +195,7 @@ export class Inbox {
       }
 
       // Update metadata
-      this.updateConversationStmt.run(requestId);
+      this.updateConversationStmt.run(energyLevel, requestId);
 
       // Log only on errors, not successful saves
       // console.log(`💾 Saved response for ${requestId}`);
