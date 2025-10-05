@@ -2,7 +2,11 @@ export class EnergyRegulator {
   private energy: number = 100; // Start fully rested
   private readonly maxEnergy: number = 100;
   private readonly minEnergy: number = -50; // Allow negative for urgent situations
-  private readonly replenishRate: number = 1; // Units per second during sleep
+  private readonly replenishRate: number;
+
+  constructor(replenishRate: number = 1) {
+    this.replenishRate = replenishRate;
+  }
 
   getEnergy(): number {
     return this.energy;
@@ -34,10 +38,9 @@ export class EnergyRegulator {
     if (this.energy < effectiveTarget) {
       const deficit = effectiveTarget - this.energy;
       const sleepTime = Math.ceil(deficit / this.replenishRate);
-      const message = this.energy < -50
-        ? `⚠️ Critical energy (${this.energy}) - forced recovery sleep to 100%`
-        : `⚠️ Insufficient energy (${this.energy}) - sleep to reach ${needed}`;
-      console.log(message);
+      if (this.energy < -50) {
+        console.log(`⚠️ Critical energy (${this.energy}) - forced recovery sleep to 100%`);
+      }
       await this.sleep(sleepTime);
       return true;
     }

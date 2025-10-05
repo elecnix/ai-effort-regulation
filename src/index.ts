@@ -5,6 +5,7 @@ import { SensitiveLoop } from './loop';
 const args = process.argv.slice(2);
 let durationSeconds: number | undefined;
 let debugMode = false;
+let replenishRate: number = 1;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--duration') {
@@ -20,11 +21,21 @@ for (let i = 0; i < args.length; i++) {
   } else if (args[i] === '--debug') {
     debugMode = true;
     console.log(`🔍 Debug mode enabled: full LLM prompts will be logged`);
+  } else if (args[i] === '--replenish-rate') {
+    const nextArg = args[i + 1];
+    if (nextArg) {
+      const rate = parseFloat(nextArg);
+      if (!isNaN(rate) && rate > 0) {
+        replenishRate = rate;
+        console.log(`⚡ Replenish rate set to ${replenishRate} units per second`);
+      }
+      i++; // Skip the next argument as it's the value
+    }
   }
 }
 
 // Create sensitive loop instance with debug mode
-const sensitiveLoop = new SensitiveLoop(debugMode);
+const sensitiveLoop = new SensitiveLoop(debugMode, replenishRate);
 
 // Make sensitive loop globally accessible for server endpoints
 (global as any).sensitiveLoop = sensitiveLoop;

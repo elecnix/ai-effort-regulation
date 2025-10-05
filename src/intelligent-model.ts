@@ -14,9 +14,9 @@ export interface ModelResponse {
 
 export class IntelligentModel {
   private currentModel: string;
-  private readonly modelThresholds: Array<{ minEnergy: number; model: string }> = [
-    { minEnergy: 0, model: 'gemma:3b' },    // Small model for low energy
-    { minEnergy: 51, model: 'llama2:7b' }  // Large model for high energy
+  private readonly modelThresholds: Array<{ energyPerPrompt: number; model: string }> = [
+    { energyPerPrompt: 10, model: 'gemma:3b' },    // Low energy cost model
+    { energyPerPrompt: 25, model: 'llama2:7b' }  // High energy cost model
   ];
 
   constructor() {
@@ -64,10 +64,10 @@ export class IntelligentModel {
    * Get the appropriate model for a given energy level
    */
   private getModelForEnergy(energy: number): string {
-    // Find the highest threshold that the energy meets
+    // Find the most expensive model we can afford (highest energyPerPrompt that energy meets)
     for (let i = this.modelThresholds.length - 1; i >= 0; i--) {
       const threshold = this.modelThresholds[i];
-      if (threshold && energy >= threshold.minEnergy) {
+      if (threshold && energy >= threshold.energyPerPrompt) {
         return threshold.model;
       }
     }
@@ -76,13 +76,10 @@ export class IntelligentModel {
     return firstThreshold ? firstThreshold.model : 'gemma:3b';
   }
 
-  /**
-   * Calculate energy consumption based on model size
-   */
   private getEnergyConsumption(model: string): number {
-    // Energy consumption based on model size
-    // TODO: Eventually use token count or GPU utilization
-    return model.includes('3b') ? 5 : 15;
+    // Energy consumption based on energy per prompt for the model
+    const threshold = this.modelThresholds.find(t => t.model === model);
+    return threshold ? threshold.energyPerPrompt : 0;
   }
 
   /**

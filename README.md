@@ -49,6 +49,18 @@ npm start
 
 The system will start on `http://localhost:3002`
 
+### Debug Mode
+
+You can run the system in debug mode to see the messages sent to the LLM:
+```bash
+npm run debug
+```
+
+It can also be useful to limit the run time to a few seconds:
+```bash
+npm run debug -- --duration=60
+```
+
 ## 🧪 Testing
 
 ### Send Messages

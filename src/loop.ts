@@ -16,7 +16,7 @@ interface ConversationEntry {
 
 export class SensitiveLoop {
   private history: ConversationEntry[] = [];
-  private energyRegulator = new EnergyRegulator();
+  private energyRegulator: EnergyRegulator;
   private intelligentModel: IntelligentModel;
   private inbox: Inbox;
   private isRunning = false;
@@ -25,8 +25,9 @@ export class SensitiveLoop {
   private readonly MAX_HISTORY_LENGTH = 10;
   private debugMode = false;
 
-  constructor(debugMode: boolean = false) {
+  constructor(debugMode: boolean = false, replenishRate: number = 1) {
     this.debugMode = debugMode;
+    this.energyRegulator = new EnergyRegulator(replenishRate);
     this.intelligentModel = new IntelligentModel();
     this.inbox = new Inbox();
     this.loadConversationContext();
@@ -142,65 +143,33 @@ export class SensitiveLoop {
 
   private async unifiedCognitiveAction() {
     try {
-      // Check if there are pending messages - if so, respond to the first one directly
+      // Check if there are pending messages and provide context, but always let LLM decide
       const pendingIds = this.getAvailableConversationIds();
-      if (pendingIds.length > 0) {
-        const firstId = pendingIds[0]!;
-        const userMessage: string = this.inbox.getPendingMessages().find(m => m.id === firstId)?.content || 'Unknown message';
-        const responseContent = `Thank you for your message: "${userMessage}". I am processing it now.`;
-        await this.respondToRequest(firstId, responseContent);
-        return;
-      }
+      const hasPendingMessages = pendingIds.length > 0;
 
-      // No pending messages - proceed with autonomous thinking/sleeping
-      // If energy is urgent, force sleep to avoid LLM failures
-      if (this.energyRegulator.getEnergy() < 0) {
-        console.log(`⚠️ Urgent energy (${this.energyRegulator.getEnergy()}) - forced recovery sleep`);
-        await this.energyRegulator.sleep(10);
-        return;
-      }
-
-      // Build conversation history (rely on prompt caching for efficiency)
+      // Build conversation history (now includes all inbox messages)
       const conversationHistory = this.buildUnifiedContext();
 
       // Create the agency prompt with current energy context - give LLM full autonomy
-      const currentEnergy = this.energyRegulator.getEnergy();
-      let energyStatus = this.energyRegulator.getStatus();
-      let energyGuidance = "";
-      if (currentEnergy < 0) {
-        energyGuidance = "CRITICAL - SLEEP immediately!";
-      } else if (currentEnergy < 20) {
-        energyGuidance = "Cognitive power dangerously low, prefer simpler tasks, consider SLEEP for recovery";
-      } else if (currentEnergy < 50) {
-        energyGuidance = "Cognitive power very low, prefer simpler tasks, consider SLEEP for recovery";
-      } else {
-        energyGuidance = "Normal operation, can perform complex tasks";
-      }
-      const agencyPrompt = `You are an AI assistant with energy levels that affect your performance.
+      const systemMessage = `You are an AI assistant with energy levels that affect your performance.
 
-If no pending messages, you can think freely or sleep to save energy.
+${hasPendingMessages ? 'You have pending messages in your inbox that need responses.' : 'You have no pending messages.'}
+
+To respond to a pending message, use this exact XML format:
+<RESPOND id="message-id">Your response here</RESPOND>
 
 To think, just respond with your inner monologue as plain text (no formatting, bold, or markdown). Reflect on your current energy level, recent actions, and how you can best serve your user. Vary your thoughts to avoid repetition. Do not copy or repeat the content of any previous messages.
 
-To sleep, use this exact XML format:
-<SLEEP seconds="5"/>
+To await a higher energy level, use this exact XML format:
+<AWAIT_ENERGY level="100"/>
 
-Current energy level: ${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})
-
-ENERGY GUIDANCE: ${energyGuidance}
-
-When energy is low, ALWAYS choose to SLEEP instead of thinking. Aim to stay above 50% energy.
+When energy is low, ALWAYS choose to AWAIT_ENERGY instead of thinking. Aim to stay above 50% energy.
 
 Respond exactly as instructed above. No extra text, formatting, or deviations.`;
 
-      this.addToHistory({
-        role: 'system',
-        content: `There are ${this.inbox.getStats().pendingCount} conversations in the inbox. Your energy level is ${this.energyRegulator.getEnergyPercentage()}% (${energyStatus}).`
-      });
-
       const messages = [
-        { role: 'system', content: agencyPrompt },
-        ...conversationHistory,
+        { role: 'system', content: systemMessage },
+        ...conversationHistory
       ];
 
       if (this.debugMode) {
@@ -221,26 +190,49 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
   }
 
   private buildUnifiedContext(): Array<{ role: string; content: string }> {
-    // Build conversation history from recent interactions
+    // Build conversation history from all inbox conversations
     const messages: Array<{ role: string; content: string }> = [];
 
-    // Add recent conversation history (last 5 entries for better context)
-    const recentHistory = this.history.slice(-5); // Last 5 entries for better context
-    for (const entry of recentHistory) {
-      messages.push({
-        role: entry.role,
-        content: entry.content
-      });
-    }
+    // Get all pending messages from inbox
+    const pendingMessages = this.inbox.getPendingMessages();
 
-    // Ensure the last message is not from assistant to avoid LLM confusion
-    if (messages.length > 0) {
-      const last = messages[messages.length - 1];
-      if (last!.role === 'assistant') {
-        messages.pop();
+    // For each pending message, add user-assistant pair
+    for (const pendingMessage of pendingMessages) {
+      const conversation = this.inbox.getConversation(pendingMessage.id);
+      if (conversation) {
+        // Add user message with request ID
+        messages.push({
+          role: 'user',
+          content: `[Request ${conversation.requestId}]: ${conversation.inputMessage}`
+        });
+
+        // Add assistant message with all responses concatenated
+        if (conversation.responses && conversation.responses.length > 0) {
+          const concatenatedResponses = conversation.responses
+            .map(r => r.content)
+            .join(' ');
+          messages.push({
+            role: 'assistant',
+            content: concatenatedResponses
+          });
+        }
       }
     }
 
+    // Add current energy level system message at the end with sleep instructions if needed
+    const currentEnergy = this.energyRegulator.getEnergy();
+    const energyStatus = this.energyRegulator.getStatus();
+    const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
+    let energyMessage = `Your energy level is ${msg}.`;
+    if (currentEnergy < 20) {
+      energyMessage = `Your energy level is low: ${msg}. To await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
+    } else if (currentEnergy < 50) {
+      energyMessage = `Your energy level is medium: ${msg}. To await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
+    }
+    messages.push({
+      role: 'system',
+      content: energyMessage
+    });
     return messages;
   }
 
@@ -250,7 +242,8 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
       const cleanResponse = modelResponse.content.trim();
 
       // Parse XML actions
-      const respondMatch = cleanResponse.match(/<RESPOND id="([^"]+)">(.*?)<\/RESPOND>/s);
+      const respondRegex = new RegExp('<RESPOND id="([^"]+)">(.*?)</RESPOND>', 's');
+      const respondMatch = cleanResponse.match(respondRegex);
       if (respondMatch) {
         const requestId = respondMatch[1]!;
         const responseContent = respondMatch[2]!.trim();
@@ -258,16 +251,14 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
         return;
       }
 
-      const sleepMatch = cleanResponse.match(/<SLEEP seconds="(\d+)"\/>/);
+      const sleepMatch = cleanResponse.match(/<AWAIT_ENERGY level="(\d+)"\/>/);
       if (sleepMatch) {
-        const sleepTime = parseInt(sleepMatch[1]!);
-        const clampedSleep = Math.max(1, Math.min(10, sleepTime));
-        console.log(`😴 Sleep: ${clampedSleep}s`);
-        await this.energyRegulator.sleep(clampedSleep);
+        const sleepLevel = parseInt(sleepMatch[1]!);
+        console.log(`😴 Awaiting ${sleepLevel}%`);
+        await this.energyRegulator.awaitEnergyLevel(sleepLevel);
         return;
       }
 
-      // Default to thinking/reflecting
       const indicator = this.getEnergyIndicator();
       console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(cleanResponse)}`);
 
