@@ -150,6 +150,8 @@ export class Inbox {
     this.pendingMessages = this.pendingMessages.filter(msg => msg.id !== messageId);
     if (this.pendingMessages.length < initialLength) {
       console.log(`📬 Removed message ${messageId} from inbox`);
+    } else {
+      console.log(`⚠️ Message ${messageId} not found in inbox`);
     }
   }
 
@@ -277,8 +279,31 @@ export class Inbox {
     }
   }
 
-  // Close database connection
-  close() {
-    this.db.close();
+  // Get recent completed conversations (those with at least one response)
+  getRecentCompletedConversations(limit: number = 5): ConversationData[] {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT c.request_id
+        FROM conversations c
+        INNER JOIN responses r ON c.id = r.conversation_id
+        GROUP BY c.id, c.request_id
+        HAVING COUNT(r.id) > 0
+        ORDER BY c.created_at DESC
+        LIMIT ?
+      `);
+
+      const rows = stmt.all(limit) as { request_id: string }[];
+      const conversations: ConversationData[] = [];
+      for (const row of rows) {
+        const conv = this.getConversation(row.request_id);
+        if (conv) {
+          conversations.push(conv);
+        }
+      }
+      return conversations;
+    } catch (error) {
+      console.error('Error getting recent completed conversations:', error);
+      return [];
+    }
   }
 }

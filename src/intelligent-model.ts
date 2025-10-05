@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { LLMConfig } from './config';
+import { EnergyRegulator } from './energy';
 
 const client = new OpenAI({
   baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
@@ -16,8 +17,8 @@ export class IntelligentModel {
   private currentModel: string;
   private readonly modelThresholds: Array<{ energyPerPrompt: number; model: string }> = [
     { energyPerPrompt: 5, model: 'qwen3:0.6b' }, // Low energy cost model
-    { energyPerPrompt: 50, model: 'qwen3:4b' }, // Medium energy cost model
-    { energyPerPrompt: 100, model: 'qwen3:8b' } // High energy cost model
+    { energyPerPrompt: 10, model: 'qwen3:4b' }, // Medium energy cost model
+    { energyPerPrompt: 20, model: 'qwen3:8b' } // High energy cost model
   ];
 
   constructor() {
@@ -30,11 +31,11 @@ export class IntelligentModel {
    */
   async generateResponse(
     messages: Array<{ role: string; content: string }>,
-    currentEnergy: number,
+    energyRegulator: EnergyRegulator,
     urgent: boolean = false
   ): Promise<ModelResponse> {
     // Select appropriate model based on energy
-    const targetModel = this.getModelForEnergy(currentEnergy);
+    const targetModel = this.getModelForEnergy(energyRegulator.getEnergy());
 
     // Switch model if needed
     if (this.currentModel !== targetModel) {
@@ -42,10 +43,16 @@ export class IntelligentModel {
     }
 
     // Generate response
+    const startTime = performance.now();
     const content = await this.generateLLMResponse(messages, this.currentModel, urgent);
+    const endTime = performance.now();
+    const timeElapsedSeconds = (endTime - startTime) / 1000;
 
     // Calculate energy consumption
-    const energyConsumed = this.getEnergyConsumption(this.currentModel);
+    const baseEnergyConsumed = this.getEnergyConsumption(this.currentModel);
+    const energyConsumed = baseEnergyConsumed - timeElapsedSeconds;
+
+    energyRegulator.consumeEnergy(energyConsumed);
 
     return {
       content,

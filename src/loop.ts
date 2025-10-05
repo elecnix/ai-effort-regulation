@@ -78,9 +78,11 @@ export class SensitiveLoop {
     console.log('Sensitive loop stopped');
   }
 
-  private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance.
+  private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance. You are reading your internal monologue, but must respond to any pending messages.
 
-To think, just respond with your inner monologue as plain text (no formatting, bold, or markdown). Reflect on your current energy level, recent actions, and how you can best serve your user. Vary your thoughts to avoid repetition. Do not copy or repeat the content of any previous messages.
+To think, respond with <THOUGHTS>your thoughts here</THOUGHTS>.
+
+Reflect on your current energy level, recent actions, and how you can best serve your user. Vary your thoughts to avoid repetition. Do not copy or repeat the content of any previous messages.
 
 To await a higher energy level, use this exact XML format:
 <AWAIT_ENERGY level="100"/>
@@ -89,23 +91,30 @@ When energy is low, ALWAYS choose to AWAIT_ENERGY instead of thinking. Aim to st
 
 Respond exactly as instructed above. No extra text, formatting, or deviations.`;
 
-private readonly systemInboxMessage = `To respond to a pending message, use this exact XML format:
-<RESPOND id="message-id">Your response here</RESPOND>`;
+  private readonly systemInboxMessage = `To respond to a pending message, use this exact XML format:
+<RESPONSE id="message-id">Your response here</RESPONSE>`;
 
   private async unifiedCognitiveAction() {
+    let systemMessage = this.inbox.isEmpty() ? this.systemMessage : this.systemMessage + '\n\n' + this.systemInboxMessage;
     try {
+      const recentConversations = this.inbox.getRecentCompletedConversations(5);
+      if (recentConversations.length > 0) {
+        const historyContents = recentConversations.map(conv =>
+          `<REQUEST id="${conv.requestId}">${conv.inputMessage}</REQUEST>\n<RESPONSE id="${conv.requestId}">${conv.responses.map(r => r.content).join('\n')}</RESPONSE>\n`
+        ).join('\n\n');
+        systemMessage = `${systemMessage}.\n\nRecent conversations:\n${historyContents}`;
+      }
+
       const messages = [
-        { role: 'system', content: this.inbox.isEmpty() ? this.systemMessage : this.systemMessage + '\n\n' + this.systemInboxMessage },
+        { role: 'system', content: systemMessage },
         ...this.buildUnifiedContext()
       ];
 
       if (this.debugMode) {
-        console.log(`🧠 DEBUG [🔋 ${this.energyRegulator.getEnergyPercentage()}%] LLM full prompt:`, JSON.stringify(messages, null, 2));
+        console.log(`${this.getEnergyIndicator()} DEBUG LLM full prompt:`, JSON.stringify(messages, null, 2));
       }
 
-      const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator.getEnergy(), false);
-
-      this.energyRegulator.consumeEnergy(modelResponse.energyConsumed);
+      const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false);
 
       await this.executeLLMAutonomousDecision(modelResponse);
 
@@ -116,29 +125,8 @@ private readonly systemInboxMessage = `To respond to a pending message, use this
 
   private buildUnifiedContext(): Array<{ role: string; content: string }> {
     const messages: Array<{ role: string; content: string }> = [];
+
     const pendingMessages = this.inbox.getPendingMessages();
-    for (const pendingMessage of pendingMessages) {
-      const conversation = this.inbox.getConversation(pendingMessage.id);
-      if (conversation) {
-        // Add user message with request ID
-        messages.push({
-          role: 'user',
-          content: `[${conversation.requestId}]: ${conversation.inputMessage}`
-        });
-
-        // Add assistant message with all responses concatenated
-        if (conversation.responses && conversation.responses.length > 0) {
-          const concatenatedResponses = conversation.responses
-            .map(r => r.content)
-            .join(' ');
-          messages.push({
-            role: 'assistant',
-            content: concatenatedResponses
-          });
-        }
-      }
-    }
-
     // Add concatenated thoughts as assistant message if any exist
     if (this.thoughtManager.hasThoughts()) {
       messages.push({
@@ -147,25 +135,41 @@ private readonly systemInboxMessage = `To respond to a pending message, use this
       });
     }
 
+    for (const pendingMessage of pendingMessages) {
+      const conversation = this.inbox.getConversation(pendingMessage.id);
+      if (conversation) {
+        // Add user message with request ID
+        messages.push({
+          role: 'user',
+          content: `<REQUEST id="${conversation.requestId}">${conversation.inputMessage}</REQUEST>`
+        });
+      }
+    }
+
     let energyMessage = this.getEphemeralSystemMessage();
     messages.push({
       role: 'system',
       content: energyMessage
     });
+
     return messages;
   }
 
   private getEphemeralSystemMessage() {
+    let message = '(ephemeral)\n';
     const currentEnergy = this.energyRegulator.getEnergy();
     const energyStatus = this.energyRegulator.getStatus();
     const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
-    let message = `(ephemeral)\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${this.inbox.getPendingMessageIds().length} messages in your inbox.`;
+    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${this.inbox.getPendingMessageIds().length} messages in your inbox.`;
+    if (!this.inbox.isEmpty()) {
+      message = `${message}\nTo respond to a message, use this exact XML format: <RESPONSE id="message-id">Your response here</RESPONSE>.`;
+    }
     if (currentEnergy < 20) {
-      message = `${message}.\nTo await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
+      message = `${message}\nTo await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
     } else if (currentEnergy < 50) {
-      message = `${message}.\nTo await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
-    } else {
-      message = `${message}.\nYou are free to let your mind wander.`;
+      message = `${message}\nTo await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
+    } else if (this.inbox.isEmpty()) {
+      message = `${message}\nYou are free to let your mind wander. You may also add a new response to previous requests: <RESPONSE id="message-id">Your response here</RESPONSE>`;
     }
     return message;
   }
@@ -176,7 +180,7 @@ private readonly systemInboxMessage = `To respond to a pending message, use this
       const cleanResponse = modelResponse.content.trim();
 
       // Parse XML actions
-      const respondRegex = new RegExp('<RESPOND id="([^"]+)">(.*?)</RESPOND>', 's');
+      const respondRegex = new RegExp('<RESPONSE id="([^"]+)">(.*?)</RESPONSE>', 's');
       const respondMatch = cleanResponse.match(respondRegex);
       if (respondMatch) {
         const requestId = respondMatch[1]!;
@@ -187,9 +191,9 @@ private readonly systemInboxMessage = `To respond to a pending message, use this
 
       const sleepMatch = cleanResponse.match(/<AWAIT_ENERGY level="(\d+)"\/>/);
       if (sleepMatch) {
-        const sleepLevel = parseInt(sleepMatch[1]!);
-        console.log(`😴 Awaiting ${sleepLevel}%`);
-        await this.energyRegulator.awaitEnergyLevel(sleepLevel);
+        const targetLevel = parseInt(sleepMatch[1]!);
+        console.log(`💤 Awaiting ${targetLevel}%`);
+        await this.energyRegulator.awaitEnergyLevel(targetLevel);
         return;
       }
 

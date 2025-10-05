@@ -13,7 +13,7 @@ export class EnergyRegulator {
   }
 
   getEnergyPercentage(): number {
-    return Math.max(0, this.energy);
+    return Math.round(Math.max(0, this.energy));
   }
 
   consumeEnergy(amount: number): void {
