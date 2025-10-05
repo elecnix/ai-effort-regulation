@@ -27,7 +27,7 @@ export class IntelligentModel {
   ];
   private requestStats: Map<string, {energy: number}[]> = new Map();
 
-  constructor() {
+  constructor(private debugMode: boolean = false) {
     this.currentModel = this.getModelForEnergy(100); // Start with high energy assumption
   }
 
@@ -81,7 +81,7 @@ export class IntelligentModel {
 
     // Generate response
     const startTime = performance.now();
-    const llmResponse = await this.generateLLMResponse(messages, this.currentModel, urgent, allowedTools);
+    const llmResponse = await this.generateLLMResponse(messages, this.currentModel, urgent, allowedTools, energyRegulator);
     const endTime = performance.now();
     const timeElapsedSeconds = (endTime - startTime) / 1000;
 
@@ -163,7 +163,8 @@ export class IntelligentModel {
     messages: Array<{ role: string; content: string }>,
     model: string,
     urgent: boolean,
-    allowedTools: string[]
+    allowedTools: string[],
+    energyRegulator: EnergyRegulator
   ): Promise<{ content: string; toolCalls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }> }> {
     const maxRetries = 3;
     const client = this.getClient();
@@ -246,16 +247,20 @@ export class IntelligentModel {
         type: 'function' as const,
         function: {
           name: 'end_conversation',
-          description: 'End the current conversation focus and return to general review mode. Use this when you feel the conversation has been sufficiently addressed or when you want to move on to other tasks.',
+          description: 'End the conversation. Use this when you feel the conversation has been sufficiently addressed or when you want to move on to other tasks.',
           parameters: {
             type: 'object',
             properties: {
+              requestId: {
+                type: 'string',
+                description: 'The ID of the conversation to end'
+              },
               reason: {
                 type: 'string',
                 description: 'Optional reason for ending the conversation (helps with learning and reflection)'
               }
             },
-            required: []
+            required: ['requestId']
           }
         }
       },
@@ -269,10 +274,24 @@ export class IntelligentModel {
         // Map our model names to provider model names
         const modelName = this.getProviderModelName(model);
 
-        // Add urgency instruction if needed
+        // Add urgency instruction based on energy level
         let systemMessage = "Respond normally.";
-        if (urgent) {
+        let maxTokens = 200;
+        let temperature = 0.7;
+
+        const currentEnergy = energyRegulator.getEnergy();
+        if (urgent || currentEnergy < 10) {
           systemMessage = "URGENT: Energy levels critically low. Respond with maximum brevity and pressing urgency. Be direct and to the point. This is an emergency situation.";
+          maxTokens = 50;
+          temperature = 0.5;
+        } else if (currentEnergy < 30) {
+          systemMessage = "ENERGY CONSERVATION: Energy is low. Be concise and prioritize essential information. Avoid unnecessary elaboration.";
+          maxTokens = 100;
+          temperature = 0.6;
+        } else if (currentEnergy < 60) {
+          systemMessage = "MODERATE ENERGY: Balance detail with efficiency. Provide necessary information without excessive verbosity.";
+          maxTokens = 150;
+          temperature = 0.65;
         }
 
         const fullMessages = [
@@ -280,19 +299,23 @@ export class IntelligentModel {
           ...messages
         ];
 
-        console.log(`🤖 Attempting LLM call - Model: ${modelName}, Attempt: ${attempt}/${maxRetries}`);
+        if (this.debugMode) {
+          console.log(`🤖 Attempting LLM call - Model: ${modelName}, Attempt: ${attempt}/${maxRetries}`);
+        }
 
         try {
           const response = await client.chat.completions.create({
             model: modelName,
             messages: fullMessages as any, // OpenAI accepts the same format
-            max_tokens: urgent ? 50 : 200,
-            temperature: urgent ? 0.5 : 0.7,
+            max_tokens: maxTokens,
+            temperature: temperature,
             tools: tools,
             tool_choice: 'required'
           });
 
-          console.log(`🤖 LLM API call successful - Model: ${modelName}`);
+          if (this.debugMode) {
+            console.log(`🤖 LLM API call successful - Model: ${modelName}`);
+          }
 
           const message = response.choices[0]?.message;
           if (!message) {
@@ -309,7 +332,9 @@ export class IntelligentModel {
             }
           }));
 
-          console.log(`🤖 LLM Response - Content length: ${content.length}, Tool calls: ${toolCalls?.length || 0}`);
+          if (this.debugMode) {
+            console.log(`🤖 LLM Response - Content length: ${content.length}, Tool calls: ${toolCalls?.length || 0}`);
+          }
 
           return {
             content,

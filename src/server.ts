@@ -129,7 +129,9 @@ app.get('/conversations', function(req: express.Request, res: express.Response):
       responseMessages: conv.responses.map(r => r.content),
       timestamp: new Date(), // Use current time for ordering
       energyConsumed: conv.metadata.totalEnergyConsumed,
-      responseCount: conv.responses.length
+      responseCount: conv.responses.length,
+      ended: conv.ended,
+      endedReason: conv.endedReason
     }));
 
     res.json({

@@ -230,7 +230,7 @@ export class Inbox {
       `);
       const result = stmt.run(reason || null, requestId);
       if (result.changes > 0) {
-        console.log(`🏁 Conversation ${requestId} marked as ended${reason ? `: ${reason}` : ''}`);
+        console.log(`✔️ Ended conversation ${requestId}: ${reason ? `: ${reason}` : ''}`);
       } else {
         console.log(`🏁 Conversation ${requestId} not found or already ended`);
       }
