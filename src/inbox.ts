@@ -47,6 +47,9 @@ export class Inbox {
     this.db = new Database(DB_PATH);
     this.initializeDatabase();
     this.prepareStatements();
+  }
+
+  open() {
     this.loadPendingMessages();
   }
 

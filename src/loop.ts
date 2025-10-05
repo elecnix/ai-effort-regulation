@@ -15,14 +15,10 @@ interface ConversationEntry {
 }
 
 export class SensitiveLoop {
-  private history: ConversationEntry[] = [];
   private energyRegulator: EnergyRegulator;
   private intelligentModel: IntelligentModel;
   private inbox: Inbox;
   private isRunning = false;
-  private modelSwitches = 0;
-  private stoppedByTimeout = false;
-  private readonly MAX_HISTORY_LENGTH = 10;
   private debugMode = false;
 
   constructor(debugMode: boolean = false, replenishRate: number = 1) {
@@ -30,56 +26,19 @@ export class SensitiveLoop {
     this.energyRegulator = new EnergyRegulator(replenishRate);
     this.intelligentModel = new IntelligentModel();
     this.inbox = new Inbox();
-    this.loadConversationContext();
-  }
-
-  private loadConversationContext() {
-    try {
-      // Load recent conversation history as context
-      const recentIds = this.inbox.getRecentConversationIds(10);
-      for (const convId of recentIds.slice(0, 5)) { // Load last 5 conversations for context
-        const conversation = this.inbox.getConversation(convId);
-        if (conversation) {
-          // Add as context entries
-          this.history.push({
-            role: 'user',
-            content: `(conversation ${convId}): ${conversation.inputMessage}`,
-            timestamp: new Date(),
-            requestId: convId
-          });
-
-          if (conversation.responses) {
-            for (const response of conversation.responses) {
-              this.history.push({
-                role: 'assistant',
-                content: response.content,
-                timestamp: new Date(response.timestamp),
-                metadata: {
-                  energyLevel: response.energyLevel,
-                  modelUsed: response.modelUsed
-                },
-                requestId: convId
-              });
-            }
-          }
-        }
-      }
-      console.log(`Loaded ${this.history.length} context entries from database`);
-    } catch (error) {
-      console.error('Error loading conversation context:', error);
-    }
   }
 
   async start(durationSeconds?: number) {
     this.isRunning = true;
     console.log(`🚀 Sensitive loop started (Energy: ${this.energyRegulator.getEnergy()})`);
+    this.inbox.open();
 
     // Set timeout if duration is specified
     if (durationSeconds && durationSeconds > 0) {
       setTimeout(() => {
         console.log(`⏰ Duration limit reached (${durationSeconds}s), stopping loop...`);
-        this.stop(true); // Pass true to indicate timeout stop
-        
+        this.stop();
+
         // Force exit after a brief delay to allow cleanup
         setTimeout(() => {
           console.log('Exiting due to timeout...');
@@ -98,26 +57,11 @@ export class SensitiveLoop {
           continue;
         }
 
-        // Check for new messages and add them to inbox (they're already saved to DB when received)
-        const newMessages = messageQueue.splice(0); // Get all pending messages
-        for (const message of newMessages) {
+        for (const message of messageQueue.splice(0)) {
           this.inbox.addMessage(message);
-          // Also add to history for context
-          this.addToHistory({
-            role: 'user',
-            content: message.content,
-            timestamp: message.timestamp,
-            requestId: message.id
-          });
         }
 
-        // Always perform autonomous cognitive action (LLM decides what to do)
         await this.unifiedCognitiveAction();
-
-        // Maintain sliding window history (keep last 100 entries for better context)
-        if (this.history.length > this.MAX_HISTORY_LENGTH) {
-          this.history = this.history.slice(-this.MAX_HISTORY_LENGTH);
-        }
 
       } catch (error) {
         console.error('Error in sensitive loop:', error);
@@ -126,34 +70,12 @@ export class SensitiveLoop {
     }
   }
 
-  stop(byTimeout: boolean = false) {
+  stop() {
     this.isRunning = false;
-    this.stoppedByTimeout = byTimeout;
     console.log('Sensitive loop stopped');
   }
 
-  wasStoppedByTimeout(): boolean {
-    return this.stoppedByTimeout;
-  }
-
-  private addToHistory(entry: ConversationEntry) {
-    this.history.push(entry);
-  }
-
-
-  private async unifiedCognitiveAction() {
-    try {
-      // Check if there are pending messages and provide context, but always let LLM decide
-      const pendingIds = this.getAvailableConversationIds();
-      const hasPendingMessages = pendingIds.length > 0;
-
-      // Build conversation history (now includes all inbox messages)
-      const conversationHistory = this.buildUnifiedContext();
-
-      // Create the agency prompt with current energy context - give LLM full autonomy
-      const systemMessage = `You are an AI assistant with energy levels that affect your performance.
-
-${hasPendingMessages ? 'You have pending messages in your inbox that need responses.' : 'You have no pending messages.'}
+  private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance.
 
 To respond to a pending message, use this exact XML format:
 <RESPOND id="message-id">Your response here</RESPOND>
@@ -167,9 +89,14 @@ When energy is low, ALWAYS choose to AWAIT_ENERGY instead of thinking. Aim to st
 
 Respond exactly as instructed above. No extra text, formatting, or deviations.`;
 
+  private async unifiedCognitiveAction() {
+    try {
+      const systemMessage = this.systemMessage;
+
+
       const messages = [
         { role: 'system', content: systemMessage },
-        ...conversationHistory
+        ...this.buildUnifiedContext()
       ];
 
       if (this.debugMode) {
@@ -178,10 +105,8 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
 
       const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator.getEnergy(), false);
 
-      // Consume the energy that was used
       this.energyRegulator.consumeEnergy(modelResponse.energyConsumed);
 
-      // Execute LLM decision directly
       await this.executeLLMAutonomousDecision(modelResponse);
 
     } catch (error: any) {
@@ -203,7 +128,7 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
         // Add user message with request ID
         messages.push({
           role: 'user',
-          content: `[Request ${conversation.requestId}]: ${conversation.inputMessage}`
+          content: `[${conversation.requestId}]: ${conversation.inputMessage}`
         });
 
         // Add assistant message with all responses concatenated
@@ -263,19 +188,7 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
         return;
       }
 
-      const indicator = this.getEnergyIndicator();
-      console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(cleanResponse)}`);
-
-      // Add the LLM's thought to history as an assistant message
-      this.addToHistory({
-        role: 'assistant',
-        content: cleanResponse,
-        timestamp: new Date(),
-        metadata: {
-          energyLevel: this.energyRegulator.getEnergy(),
-          modelUsed: modelResponse.modelUsed
-        }
-      });
+      console.log(`${this.getEnergyIndicator()} 🤔 LLM thought: ${this.truncateText(cleanResponse)}`);
 
     } catch (error: any) {
       console.error(`❌ Error:`, error?.message || error);
@@ -298,61 +211,16 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
     return `${colorCode}${symbol}\x1b[0m`; // Add reset code
   }
 
-  private getAvailableConversationIds(): string[] {
-    try {
-      // Return pending message IDs that need responses, limit to 5
-      return this.inbox.getPendingMessageIds(5);
-    } catch (error) {
-      console.error('Error getting available conversation IDs:', error);
-      return [];
-    }
-  }
-
   private async respondToRequest(requestId: string, responseContent: string) {
     try {
-      // Find the user message from history
-      const userEntry = this.history.find(entry => entry.requestId === requestId && entry.role === 'user');
-      if (!userEntry) {
-        console.error(`❌ No user message found for request ${requestId}`);
-        return;
-      }
       console.log(`💬 Response to ${requestId}: ${this.truncateText(responseContent)}`);
 
-      // Consume energy (assume a fixed cost for autonomous responses)
-      this.energyRegulator.consumeEnergy(5); // Fixed cost for autonomous response
+      // TODO Add response to inbox
 
-      // Add response to global history
-      this.addToHistory({
-        role: 'assistant',
-        content: responseContent,
-        timestamp: new Date(),
-        metadata: {
-          energyLevel: this.energyRegulator.getEnergy(),
-          modelUsed: 'autonomous'
-        },
-        requestId: requestId
-      });
-
-      // Use tool to respond
-      await this.inbox.addResponse(requestId, userEntry.content, responseContent, this.energyRegulator.getEnergy(), 'autonomous', this.modelSwitches);
-
-      // Remove from pending messages list
-      this.inbox.removeMessage(requestId);
-
-      console.log(`💬 Processed autonomous response for: "${this.truncateText(userEntry.content)}..."`);
+      // TODO this.inbox.markAsDone(requestId);
 
     } catch (error) {
       console.error(`❌ Error responding to request ${requestId}:`, error);
-    }
-  }
-
-  private getRecentConversationIds(): string[] {
-    try {
-      // Get recent conversation IDs from the database
-      return this.inbox.getRecentConversationIds(10); // Get last 10 conversations
-    } catch (error) {
-      console.error('Error getting recent conversation IDs:', error);
-      return [];
     }
   }
 
