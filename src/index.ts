@@ -1,5 +1,6 @@
 import { startServer } from './server';
 import { SensitiveLoop } from './loop';
+import { ProviderConfiguration } from './provider-config';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -31,6 +32,22 @@ for (let i = 0; i < args.length; i++) {
       }
       i++; // Skip the next argument as it's the value
     }
+  } else if (args[i] === '--provider') {
+    const nextArg = args[i + 1];
+    if (nextArg && (nextArg === 'ollama' || nextArg === 'openrouter')) {
+      process.env.AI_PROVIDER = nextArg;
+      console.log(`🤖 AI Provider set to: ${nextArg}`);
+      i++; // Skip the next argument as it's the value
+    } else {
+      console.error('❌ Invalid provider. Must be "ollama" or "openrouter"');
+    }
+  } else if (args[i] === '--model') {
+    const nextArg = args[i + 1];
+    if (nextArg) {
+      process.env.AI_MODEL = nextArg;
+      console.log(`🧠 AI Model set to: ${nextArg}`);
+      i++; // Skip the next argument as it's the value
+    }
   }
 }
 
@@ -42,6 +59,15 @@ const sensitiveLoop = new SensitiveLoop(debugMode, replenishRate);
 
 async function main() {
   console.log('Starting AI Effort Regulation Demo...');
+
+  // Validate provider configuration
+  const provider = process.env.AI_PROVIDER || 'ollama';
+  try {
+    ProviderConfiguration.validateConfig(provider);
+  } catch (error) {
+    console.error(`❌ Configuration error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
 
   // Start HTTP server
   startServer();

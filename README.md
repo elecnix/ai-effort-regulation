@@ -49,6 +49,11 @@ npm start
 
 The system will start on `http://localhost:3002`
 
+### Running with OpenRouter
+```bash
+npm start -- --provider openrouter --model x-ai/grok-4-fast
+```
+
 ### Debug Mode
 
 You can run the system in debug mode to see the messages sent to the LLM:

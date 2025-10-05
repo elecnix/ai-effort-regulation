@@ -1,11 +1,7 @@
 import OpenAI from 'openai';
 import { LLMConfig } from './config';
+import { ProviderConfiguration } from './provider-config';
 import { EnergyRegulator } from './energy';
-
-const client = new OpenAI({
-  baseURL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
-  apiKey: process.env.OLLAMA_API_KEY || 'ollama' // Ollama doesn't require a real API key
-});
 
 export interface ModelResponse {
   content: string;
@@ -28,6 +24,27 @@ export class IntelligentModel {
   }
 
   /**
+   * Get the appropriate OpenAI client for the current provider
+   */
+  private getClient(): OpenAI {
+    const provider = process.env.AI_PROVIDER || 'ollama';
+    const config = ProviderConfiguration.getProviderConfig(provider);
+
+    return new OpenAI({
+      baseURL: config.baseURL,
+      apiKey: config.apiKey
+    });
+  }
+
+  /**
+   * Get the provider-specific model name
+   */
+  private getProviderModelName(model: string): string {
+    const provider = process.env.AI_PROVIDER || 'ollama';
+    return LLMConfig.getModelForProvider(provider, model);
+  }
+
+  /**
    * Generate a response using the appropriate model based on current energy levels
    * Returns both the content and the energy consumed
    */
@@ -36,8 +53,17 @@ export class IntelligentModel {
     energyRegulator: EnergyRegulator,
     urgent: boolean = false
   ): Promise<ModelResponse> {
-    // Select appropriate model based on energy
-    const targetModel = this.getModelForEnergy(energyRegulator.getEnergy());
+    const provider = process.env.AI_PROVIDER || 'ollama';
+
+    // Select appropriate model based on provider and energy
+    let targetModel: string;
+    if (provider === 'openrouter') {
+      // For OpenRouter, use the specified model directly (bypass energy-based selection)
+      targetModel = process.env.AI_MODEL || 'x-ai/grok-4-fast';
+    } else {
+      // For Ollama, use energy-based model selection
+      targetModel = this.getModelForEnergy(energyRegulator.getEnergy());
+    }
 
     // Switch model if needed
     if (this.currentModel !== targetModel) {
@@ -68,8 +94,16 @@ export class IntelligentModel {
     if (stats.length > 5) stats.shift();
     this.requestStats.set(model, stats);
     const averageEnergyConsumed = stats.reduce((sum, s) => sum + s.energy, 0) / stats.length;
-    const modelConsumption = this.modelConsumption.find((consumption) => consumption.model === model)!;
-    modelConsumption.energyPerPrompt = averageEnergyConsumed;
+
+    // Find existing model config or create new one for unknown models
+    let modelConsumption = this.modelConsumption.find((consumption) => consumption.model === model);
+    if (!modelConsumption) {
+      // Add new model to consumption tracking for any provider
+      modelConsumption = { energyPerPrompt: averageEnergyConsumed, model };
+      this.modelConsumption.push(modelConsumption);
+    } else {
+      modelConsumption.energyPerPrompt = averageEnergyConsumed;
+    }
   }
 
   /**
@@ -103,8 +137,9 @@ export class IntelligentModel {
 
   private getEnergyConsumption(model: string): number {
     // Energy consumption based on energy per prompt for the model
-    const threshold = this.modelConsumption.find(t => t.model === model);
-    return threshold ? threshold.energyPerPrompt : 0;
+    const config = this.modelConsumption.find(t => t.model === model);
+    const defaultConsumption = 10; // Depletion rate of 1 unit per second provides 10 seconds of runtime (10/100)
+    return config ? config.energyPerPrompt : defaultConsumption;
   }
 
   /**
@@ -116,11 +151,12 @@ export class IntelligentModel {
     urgent: boolean
   ): Promise<string> {
     const maxRetries = 3;
+    const client = this.getClient();
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Map our model names to Ollama model names
-        const modelName = LLMConfig.getOllamaModel(model);
+        // Map our model names to provider model names
+        const modelName = this.getProviderModelName(model);
 
         // Add urgency instruction if needed
         let systemMessage = "Respond normally.";
@@ -135,7 +171,7 @@ export class IntelligentModel {
 
         const response = await client.chat.completions.create({
           model: modelName,
-          messages: fullMessages as any, // Ollama accepts the same format
+          messages: fullMessages as any, // OpenAI accepts the same format
           max_tokens: urgent ? 50 : 200,
           temperature: urgent ? 0.5 : 0.7
         });
