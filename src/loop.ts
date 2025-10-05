@@ -86,7 +86,7 @@ Do not combine thoughts and tool calls in the same response unless the tools are
 
 Use the end_conversation tool when you feel a conversation is over. Keep conversations open until the initial intent is completed or the user clearly states the conversation is over. The energy cost of the conversation is shown in the metadata of the conversation. Focusing on a conversation costs extra energy.
 
-Use the snooze_conversation tool to snooze a conversation for a specified number of minutes. You will conserve energy until the snooze period expires. When the user responds, the conversation will be reactivated. Use this when you need to set a reminder for later.`;
+Use the snooze_conversation tool to snooze a conversation for a specified number of minutes. You will conserve energy until the snooze period expires. When the user responds, the conversation will be reactivated. Use this when you need to set a reminder for later. When you see a conversation marked with [Previously snoozed until: ...], it means the snooze period has expired and you should now perform the requested action rather than snoozing again.`;
 
   private readonly systemInboxMessage = `To respond to a pending conversation, use the respond tool with the appropriate conversation ID and your response content.`;
 
@@ -193,12 +193,12 @@ Use the snooze_conversation tool to snooze a conversation for a specified number
     return thoughts;
   }
 
-  private getConversationMessages(conversations: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }>): Array<{ role: string; content: string }> {
+  private getConversationMessages(conversations: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date; snoozeInfo?: string }>): Array<{ role: string; content: string }> {
     const messages: Array<{ role: string; content: string }> = [];
     for (const conversation of conversations) {
       messages.push({
         role: 'user',
-        content: `Conversation ${conversation.id}: ${conversation.requestMessage}`
+        content: `Conversation ${conversation.id}: ${conversation.requestMessage}${conversation.snoozeInfo ? ` [${conversation.snoozeInfo}]` : ''}`
       });
       if (conversation.responseMessages.length > 0) {
         messages.push({

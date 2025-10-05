@@ -307,20 +307,20 @@ export class Inbox {
   }
 
   // Get recent conversations (for LLM context)
-  getRecentConversations(limit: number = 5): Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }> {
+  getRecentConversations(limit: number = 5): Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date; snoozeInfo?: string }> {
     try {
       const stmt = this.db.prepare(`
-        SELECT c.request_id, c.input_message, c.created_at
+        SELECT c.request_id, c.input_message, c.created_at, c.snooze_until
         FROM conversations c
         LEFT JOIN responses r ON c.id = r.conversation_id
         WHERE (c.snooze_until IS NULL OR c.snooze_until < strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-        GROUP BY c.id, c.request_id, c.input_message, c.created_at
+        GROUP BY c.id, c.request_id, c.input_message, c.created_at, c.snooze_until
         ORDER BY c.created_at DESC
         LIMIT ?
       `);
 
-      const rows = stmt.all(limit) as { request_id: string; input_message: string; created_at: string }[];
-      const conversations: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }> = [];
+      const rows = stmt.all(limit) as { request_id: string; input_message: string; created_at: string; snooze_until: string | null }[];
+      const conversations: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date; snoozeInfo?: string }> = [];
 
       for (const row of rows) {
         // Get responses for this conversation
@@ -330,12 +330,18 @@ export class Inbox {
           const responseRows = responsesStmt.all(conversation.id) as { content: string }[];
           const responseMessages = responseRows.map(r => r.content);
 
-          conversations.push({
+          const conversationData: { id: string; requestMessage: string; responseMessages: string[]; timestamp: Date; snoozeInfo?: string } = {
             id: row.request_id,
             requestMessage: row.input_message || '',
             responseMessages: responseMessages,
             timestamp: new Date(row.created_at)
-          });
+          };
+
+          if (row.snooze_until) {
+            conversationData.snoozeInfo = `Previously snoozed until: ${row.snooze_until}`;
+          }
+
+          conversations.push(conversationData);
         }
       }
 
