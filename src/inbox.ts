@@ -220,6 +220,15 @@ export class Inbox {
     }
   }
 
+  // Add energy consumption to a conversation without adding a response
+  addEnergyConsumption(requestId: string, energyConsumed: number) {
+    try {
+      this.updateConversationStmt.run(energyConsumed, requestId);
+    } catch (error) {
+      console.error('Error updating energy consumption:', error);
+    }
+  }
+
   // Mark a conversation as ended (won't be reviewed anymore)
   endConversation(requestId: string, reason?: string) {
     try {

@@ -355,6 +355,9 @@ When you have thoughts to share, use the think tool with meaningful content firs
 
     const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think', 'end_conversation']);
 
+    // Attribute the energy consumed during thinking to the selected conversation
+    this.inbox.addEnergyConsumption(this.selectedConversationId, modelResponse.energyConsumed);
+
     // Clear the selection after handling
     this.selectedConversationId = null;
 
