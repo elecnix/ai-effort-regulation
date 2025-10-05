@@ -4,9 +4,8 @@ export class LLMConfig {
    * This is used for backward compatibility with the existing energy-based model switching
    */
   static getOllamaModel(model: string): string {
-    // For Ollama, we maintain the existing mapping logic
-    // In the future, this could be expanded to support more Ollama models
-    return model.includes('3b') || model.includes('0.6b') ? 'gemma:2b' : 'gemma:7b';
+    // Use llama3.2:3b for better tool-calling support (still small)
+    return 'llama3.2:3b';
   }
 
   /**

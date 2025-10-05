@@ -74,21 +74,17 @@ export class SensitiveLoop {
     console.log('Sensitive loop stopped');
   }
 
-  private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance.
+  private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance. You have access to tools to perform actions. PRIORITY: Always respond to pending messages FIRST before considering energy management.
 
-To think, respond with <THOUGHTS>your thoughts here</THOUGHTS>.
+When there are messages in your inbox, USE THE RESPOND TOOL immediately to answer them. Only consider energy management after all messages are handled.
 
 Reflect on your current energy level, recent actions, and how you can best serve your user. Vary your thoughts to avoid repetition. Do not copy or repeat the content of any previous messages.
 
-To await a higher energy level, use this exact XML format:
-<AWAIT_ENERGY level="100"/>
+When you have thoughts to share, respond with your thoughts directly. When you need to take an action, use the appropriate tool.
 
-When energy is low, ALWAYS choose to AWAIT_ENERGY instead of thinking. Aim to stay above 50% energy.
+Respond with your thoughts first, then use tools if needed. Do not combine thoughts and tool calls in the same response unless the tool is for responding to a message.`;
 
-Respond exactly as instructed above. No extra text, formatting, or deviations.`;
-
-  private readonly systemInboxMessage = `To respond to a pending message, use this exact XML format:
-<RESPONSE id="message-id">Your response here</RESPONSE>`;
+  private readonly systemInboxMessage = `To respond to a pending message, use the respond tool with the appropriate message ID and your response content.`;
 
   private async unifiedCognitiveAction() {
     try {
@@ -101,7 +97,7 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
         this.getEphemeralSystemMessage(conversations),
         {
           role: 'user',
-          content: 'Provide a response in the <RESPONSE> tag.'
+          content: 'Provide your thoughts and use tools as needed.'
         }
       ];
 
@@ -139,12 +135,12 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
     for (const conversation of conversations) {
       messages.push({
         role: 'user',
-        content: `<REQUEST id="${conversation.id}">${conversation.requestMessage}</REQUEST>`
+        content: `Request ${conversation.id}: ${conversation.requestMessage}`
       });
       if (conversation.responseMessages.length > 0) {
         messages.push({
           role: 'assistant',
-          content: conversation.responseMessages.map((response) => `<RESPONSE id="${conversation.id}">${response}</RESPONSE>`).join('\n')
+          content: conversation.responseMessages.join('\n')
         });
       }
     }
@@ -156,16 +152,18 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
     const currentEnergy = this.energyRegulator.getEnergy();
     const energyStatus = this.energyRegulator.getStatus();
     const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
-    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${conversations.length} conversations in your inbox.`;
+    // Count only unanswered conversations (those with no responses)
+    const unansweredCount = conversations.filter(conv => conv.responseMessages.length === 0).length;
+    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${unansweredCount} conversations in your inbox.`;
     if (!this.inbox.isEmpty()) {
-      message = `${message}\nTo respond to a conversation, use this exact XML format: <RESPONSE id="conversation-id">Your response here</RESPONSE>.`;
+      message = `${message}\nTo respond to a conversation, use the respond tool: respond(conversationId, responseContent).\nTo await higher energy levels, use the await_energy tool: await_energy(targetLevel).`;
     }
     if (currentEnergy < 20) {
-      message = `${message}\nTo await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
+      message = `${message}\nTo await a higher energy level, use the await_energy tool: await_energy(targetLevel).`;
     } else if (currentEnergy < 50) {
-      message = `${message}\nTo await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
+      message = `${message}\nTo await a higher energy level, use the await_energy tool: await_energy(targetLevel).`;
     } else if (this.inbox.isEmpty()) {
-      message = `${message}\nYou are free to let your mind reflect on your recent conversations. You are encouraged to push additional responses to previous requests: <RESPONSE id="conversation-id">Your response here</RESPONSE>`;
+      message = `${message}\nYou are free to let your mind reflect on your recent conversations. You are encouraged to push additional responses to previous requests using the respond tool: respond(requestId, content).`;
     }
     return {
       role: 'user',
@@ -175,31 +173,21 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
 
   private async executeLLMAutonomousDecision(modelResponse: ModelResponse) {
     try {
-      // Clean the response
-      const cleanResponse = modelResponse.content.trim();
-
-      // Parse XML actions
-      const respondRegex = new RegExp('<RESPONSE id="([^"]+)">(.*?)</RESPONSE>', 's');
-      const respondMatch = cleanResponse.match(respondRegex);
-      if (respondMatch) {
-        const requestId = respondMatch[1]!;
-        const responseContent = respondMatch[2]!.trim();
-        await this.respondToRequest(requestId, responseContent, modelResponse);
+      // Handle tool calls if present
+      if (modelResponse.toolCalls && modelResponse.toolCalls.length > 0) {
+        console.log(`🔧 Executing ${modelResponse.toolCalls.length} tool calls`);
+        for (const toolCall of modelResponse.toolCalls) {
+          await this.executeToolCall(toolCall);
+        }
         return;
       }
 
-      const sleepMatch = cleanResponse.match(/<AWAIT_ENERGY level="(\d+)"\/>/);
-      if (sleepMatch) {
-        const targetLevel = parseInt(sleepMatch[1]!);
-        console.log(`💤 Awaiting ${targetLevel}%`);
-        await this.energyRegulator.awaitEnergyLevel(targetLevel);
-        return;
+      // If no tool calls, treat as thoughts
+      const thoughts = modelResponse.content.trim();
+      if (thoughts) {
+        console.log(`${this.getEnergyIndicator()} 🤔 LLM thought: ${this.truncateText(thoughts)}`);
+        this.thoughtManager.addThought(thoughts);
       }
-
-      const thoughts = cleanResponse.replace(/<THOUGHTS>/g, '').replace(/<\/THOUGHTS>/g, '');
-      console.log(`${this.getEnergyIndicator()} 🤔 LLM thought: ${this.truncateText(thoughts)}`);
-
-      this.thoughtManager.addThought(thoughts);
 
     } catch (error: any) {
       console.error(`❌ Error:`, error?.message || error);
@@ -222,7 +210,7 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
     return `${colorCode}${symbol}\x1b[0m`; // Add reset code
   }
 
-  private async respondToRequest(requestId: string, responseContent: string, modelResponse: ModelResponse) {
+  private async respondToRequest(requestId: string, responseContent: string) {
     try {
       console.log(`💬 Response to ${requestId}: ${this.truncateText(responseContent)}`);
 
@@ -236,12 +224,38 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
       // Add response to inbox
       const userMessage = conversation.inputMessage;
       const energyLevel = this.energyRegulator.getEnergy();
-      const modelUsed = modelResponse.modelUsed;
+      // Get current model from intelligent model
+      const modelUsed = this.intelligentModel.getCurrentModel();
 
       this.inbox.addResponse(requestId, userMessage, responseContent, energyLevel, modelUsed);
 
+      // Remove from pending messages since it's now answered
+      this.inbox.removeMessage(requestId);
+
     } catch (error) {
       console.error(`❌ Error responding to request ${requestId}:`, error);
+    }
+  }
+
+  private async executeToolCall(toolCall: { id: string; type: string; function: { name: string; arguments: string } }) {
+    const { name, arguments: args } = toolCall.function;
+
+    console.log(`🔧 Executing tool: ${name}, raw args: "${args}"`);
+
+    try {
+      if (name === 'respond') {
+        const { requestId, content } = JSON.parse(args);
+        console.log(`💬 Responding to ${requestId} with: ${content?.substring(0, 50)}...`);
+        await this.respondToRequest(requestId, content);
+      } else if (name === 'await_energy') {
+        const { level } = JSON.parse(args);
+        console.log(`💤 Awaiting ${level}% energy`);
+        await this.energyRegulator.awaitEnergyLevel(level);
+      } else {
+        console.error(`Unknown tool: ${name}`);
+      }
+    } catch (error) {
+      console.error(`Error executing tool ${name} with args "${args}":`, error);
     }
   }
 

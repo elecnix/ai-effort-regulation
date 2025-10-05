@@ -7,6 +7,14 @@ export interface ModelResponse {
   content: string;
   energyConsumed: number;
   modelUsed: string;
+  toolCalls?: Array<{
+    id: string;
+    type: string;
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }>;
 }
 
 export class IntelligentModel {
@@ -72,7 +80,7 @@ export class IntelligentModel {
 
     // Generate response
     const startTime = performance.now();
-    const content = await this.generateLLMResponse(messages, this.currentModel, urgent);
+    const llmResponse = await this.generateLLMResponse(messages, this.currentModel, urgent);
     const endTime = performance.now();
     const timeElapsedSeconds = (endTime - startTime) / 1000;
 
@@ -82,9 +90,10 @@ export class IntelligentModel {
     this.updateConsumption(this.currentModel, actualEnergyConsumed);
 
     return {
-      content,
+      content: llmResponse.content,
       energyConsumed: actualEnergyConsumed,
-      modelUsed: this.currentModel
+      modelUsed: this.currentModel,
+      ...(llmResponse.toolCalls && { toolCalls: llmResponse.toolCalls })
     };
   }
 
@@ -104,6 +113,10 @@ export class IntelligentModel {
     } else {
       modelConsumption.energyPerPrompt = averageEnergyConsumed;
     }
+  }
+
+  getCurrentModel(): string {
+    return this.currentModel;
   }
 
   /**
@@ -149,9 +162,51 @@ export class IntelligentModel {
     messages: Array<{ role: string; content: string }>,
     model: string,
     urgent: boolean
-  ): Promise<string> {
+  ): Promise<{ content: string; toolCalls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }> }> {
     const maxRetries = 3;
     const client = this.getClient();
+
+    // Define tools
+    const tools = [
+      {
+        type: 'function' as const,
+        function: {
+          name: 'respond',
+          description: 'Respond to a user message with the given request ID',
+          parameters: {
+            type: 'object',
+            properties: {
+              requestId: {
+                type: 'string',
+                description: 'The ID of the request to respond to'
+              },
+              content: {
+                type: 'string',
+                description: 'The response content'
+              }
+            },
+            required: ['requestId', 'content']
+          }
+        }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'await_energy',
+          description: 'Wait until energy level reaches the specified percentage',
+          parameters: {
+            type: 'object',
+            properties: {
+              level: {
+                type: 'number',
+                description: 'The energy level percentage to wait for (0-100)'
+              }
+            },
+            required: ['level']
+          }
+        }
+      }
+    ];
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
@@ -169,26 +224,55 @@ export class IntelligentModel {
           ...messages
         ];
 
-        const response = await client.chat.completions.create({
-          model: modelName,
-          messages: fullMessages as any, // OpenAI accepts the same format
-          max_tokens: urgent ? 50 : 200,
-          temperature: urgent ? 0.5 : 0.7
-        });
+        console.log(`🤖 Attempting LLM call - Model: ${modelName}, Attempt: ${attempt}/${maxRetries}`);
 
-        const content = response.choices[0]?.message?.content;
-        if (!content) {
-          throw new Error('No content in LLM response');
+        try {
+          const response = await client.chat.completions.create({
+            model: modelName,
+            messages: fullMessages as any, // OpenAI accepts the same format
+            max_tokens: urgent ? 50 : 200,
+            temperature: urgent ? 0.5 : 0.7,
+            tools: tools,
+            tool_choice: 'required'
+          });
+
+          console.log(`🤖 LLM API call successful - Model: ${modelName}`);
+
+          const message = response.choices[0]?.message;
+          if (!message) {
+            throw new Error('No message in LLM response');
+          }
+
+          const content = message.content || '';
+          const toolCalls = message.tool_calls?.map(tc => ({
+            id: tc.id,
+            type: tc.type,
+            function: {
+              name: (tc as any).function.name,
+              arguments: (tc as any).function.arguments
+            }
+          }));
+
+          console.log(`🤖 LLM Response - Content length: ${content.length}, Tool calls: ${toolCalls?.length || 0}`);
+
+          return {
+            content,
+            ...(toolCalls && { toolCalls })
+          };
+
+        } catch (llmError: any) {
+          console.error(`❌ LLM API Error on attempt ${attempt}:`, llmError.message);
+          throw llmError;
         }
-
-        return content;
 
       } catch (error: any) {
         console.error(`LLM generation error (attempt ${attempt}/${maxRetries}):`, error.message);
 
         // Don't retry on the last attempt
         if (attempt === maxRetries) {
-          return 'I apologize, but I encountered an error processing your request. Please try again later.';
+          return {
+            content: 'I apologize, but I encountered an error processing your request. Please try again later.'
+          };
         }
 
         // Exponential backoff for retries
@@ -199,6 +283,8 @@ export class IntelligentModel {
     }
 
     // This should never be reached, but TypeScript requires it
-    return 'I apologize, but I encountered an error processing your request.';
+    return {
+      content: 'I apologize, but I encountered an error processing your request.'
+    };
   }
 }

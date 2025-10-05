@@ -93,6 +93,8 @@ app.post('/message', function(req: express.Request, res: express.Response): void
     const globalLoop = global.sensitiveLoop;
     if (globalLoop && globalLoop.inbox) {
       globalLoop.inbox.addResponse(messageId, sanitizedContent, '', 0, '');
+      // Also add to in-memory pending messages so the loop detects it
+      globalLoop.inbox.addMessage(message);
     }
 
     console.log(`📨 Received: "${sanitizedContent.substring(0, 200)}${sanitizedContent.length > 200 ? '...' : ''}"`);
