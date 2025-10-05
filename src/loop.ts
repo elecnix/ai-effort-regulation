@@ -74,36 +74,33 @@ export class SensitiveLoop {
   }
 
 
-  private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance. You have access to tools to perform actions. PRIORITY: Always respond to pending messages FIRST before considering energy management.
+  private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance. Every action you take consumes energy. You have access to tools to perform actions.
 
-When there are messages in your inbox, USE THE RESPOND TOOL immediately to answer them. Only consider energy management after all messages are handled.
+When there are conversations in your inbox, USE THE RESPOND TOOL immediately to answer them. Conversation IDs consist of UUIDs; If you don't see a UUID, it doesn't exist.
 
-When reviewing previous conversations, you can also use the respond tool to add to, improve, or follow up on previous responses if you have additional valuable insights to share.
+When reviewing previous conversations, you can also use the respond tool to add to previous responses if you have additional valuable insights to share.
 
-Thinking costs $1 per second. Every action you take consumes energy that costs money. Be efficient - don't waste time on unnecessary thinking or over-analysis.
+Use the think tool to record your internal thoughts and reflections when the next action is not clear. If you decide to use the think tool, provide meaningful, substantive thoughts. Thinking costs energy.
 
-Use the think tool to record your internal thoughts and reflections. This helps you reason through complex problems and maintain continuity in your thinking. Always provide meaningful, substantive thoughts - never use the think tool with empty content. Thinking consumes energy!
+Do not combine thoughts and tool calls in the same response unless the tools are for responding to conversation.
 
-Use the end_conversation tool when you feel a conversation has been sufficiently addressed or when you want to move on to other tasks. This helps you manage your focus and energy efficiently. The cost spent so far by the conversation is shown in the metadata of the conversation. Overthinking is a waste of energy.
+Manage your focus. Get things done. Use the end_conversation tool when you feel a conversation has a sufficient number of responses. End costly conversations to preserve energy. The energy cost of the conversation is shown in the metadata of the conversation.`;
 
-Reflect on your current energy level, recent actions, and how you can best serve your user. Vary your thoughts to avoid repetition. Do not copy or repeat the content of any previous messages.
-
-When you have thoughts to share, use the think tool with meaningful content first, then use other tools if needed. Do not combine thoughts and tool calls in the same response unless the tool is for responding to a message.`;
-
-  private readonly systemInboxMessage = `To respond to a pending message, use the respond tool with the appropriate message ID and your response content.`;
+  private readonly systemInboxMessage = `To respond to a pending conversation, use the respond tool with the appropriate conversation ID and your response content.`;
 
   private async unifiedCognitiveAction() {
     try {
-      // If a conversation is selected for focused improvement, handle it
-      if (this.selectedConversationId) {
-        await this.handleSelectedConversation();
-        return;
-      }
-
+      
       // Get all recent conversations, then filter to unanswered ones only
       const allConversations = this.inbox.getRecentConversations(10);
       const unansweredConversations = allConversations.filter(conv => conv.responseMessages.length === 0);
-
+      
+      // If a conversation is selected for focused improvement, handle it
+      if (this.selectedConversationId) {
+        await this.handleSelectedConversation(allConversations.length, unansweredConversations.length);
+        return;
+      }
+      
       // Focus on the oldest unanswered conversation (highest priority)
       const targetConversation = unansweredConversations.length > 0 ? unansweredConversations[0] : null;
 
@@ -113,7 +110,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
       if (targetConversation) {
         // Focus on one unanswered conversation
         conversationsToInclude = [targetConversation];
-        instruction = `Focus on the conversation above and decide whether to respond using the respond tool or manage your energy using the await_energy tool.`;
+        instruction = `Focus on the conversation above and decide whether to respond, think, end_conversation, or await_energy.`;
       } else {
         // No unanswered conversations - review recent completed ones for potential improvements
         // Adjust review count based on energy level: more energy = more conversations to review
@@ -130,14 +127,14 @@ When you have thoughts to share, use the think tool with meaningful content firs
         }));
         instruction = conversationsToInclude.length > 0
           ? `Review the recent conversations above. Use the select_conversation tool to choose one for adding to, or use await_energy to manage energy.`
-          : 'No recent conversations to review. You can think, reflect, or manage your energy as needed.';
+          : 'No recent conversations to review. Use await_energy to remain at 100% energy.';
       }
 
       const messages = [
         this.getSystemMessage(targetConversation),
         ...this.getConversationMessages(conversationsToInclude),
         ...this.getThoughts(false), // Not conversation-focused, so only review thoughts
-        this.getEphemeralSystemMessage(conversationsToInclude, unansweredConversations.length),
+        this.getEphemeralSystemMessage(conversationsToInclude, allConversations.length, unansweredConversations.length),
         {
           role: 'user',
           content: instruction
@@ -211,18 +208,18 @@ When you have thoughts to share, use the think tool with meaningful content firs
     return messages;
   }
 
-  private getEphemeralSystemMessage(conversationsToInclude: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }>, totalUnansweredCount: number) {
+  private getEphemeralSystemMessage(conversationsToInclude: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }>, totalMessages: number, totalUnansweredCount: number) {
     let message = '(ephemeral)\n';
     const currentEnergy = this.energyRegulator.getEnergy();
     const energyStatus = this.energyRegulator.getStatus();
     const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
-    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${totalUnansweredCount} total unanswered conversations.`;
+    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${totalMessages} total messages, and ${totalUnansweredCount} total unanswered conversations.`;
     if (conversationsToInclude.length > 0) {
       message = `${message}\nYou are currently focused on one conversation. Use the respond tool to add a response, or use await_energy to manage your energy.`;
+    } else if (totalMessages == 0) {
+      message = `${message}\nAim to stay at 100% energy with await_energy.`;
     }
-    if (currentEnergy < 20) {
-      message = `${message}\nTo await a higher energy level, use the await_energy tool: await_energy(targetLevel).`;
-    } else if (currentEnergy < 50) {
+    if (currentEnergy < 50) {
       message = `${message}\nTo await a higher energy level, use the await_energy tool: await_energy(targetLevel).`;
     }
     return {
@@ -320,7 +317,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
     }
   }
 
-  private async handleSelectedConversation() {
+  private async handleSelectedConversation(totalConversations: number, unansweredConversations: number) {
     if (!this.selectedConversationId) return;
 
     // Get the selected conversation
@@ -333,7 +330,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
 
     const conversationsToInclude = [{
       id: conversation.requestId,
-      requestMessage: `${conversation.inputMessage || ''} [Cost: $${conversation.metadata.totalEnergyConsumed.toFixed(2)}, ${conversation.responses.length} responses]`,
+      requestMessage: `${conversation.inputMessage || ''} [Cost: ${conversation.metadata.totalEnergyConsumed.toFixed(2)} units, ${conversation.responses.length} responses]`,
       responseMessages: conversation.responses.map(r => r.content),
       timestamp: new Date()
     }];
@@ -342,7 +339,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
       this.getSystemMessage(null), // No target conversation since we're improving an existing one
       ...this.getConversationMessages(conversationsToInclude),
       ...this.getThoughts(true), // Conversation-focused, so include conversation thoughts
-      this.getEphemeralSystemMessage(conversationsToInclude, 0), // 0 unanswered since we're reviewing completed
+      this.getEphemeralSystemMessage(conversationsToInclude, totalConversations, unansweredConversations), // 0 unanswered since we're reviewing completed
       {
         role: 'user',
         content: `You have selected this conversation. To append a response to the previous responses, use the respond tool, or use await_energy to manage your energy. Use end_conversation if you feel this conversation has been sufficiently addressed, or has become one-sided.`
@@ -383,7 +380,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
       if (name === 'respond') {
         try {
           const { requestId, content } = JSON.parse(args);
-          await this.respondToRequest(requestId, content);
+          await this.respondToRequest(this.extractValidConversationId(requestId), content);
         } catch (parseError) {
           console.log(`💬 Malformed respond tool call with args "${args}", ignoring`);
         }
@@ -397,7 +394,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
       } else if (name === 'select_conversation') {
         try {
           const { requestId } = JSON.parse(args);
-          await this.selectConversation(requestId);
+          await this.selectConversation(this.extractValidConversationId(requestId));
         } catch (parseError) {
           console.log(`🎯 Malformed select_conversation tool call with args "${args}", ignoring`);
         }
@@ -405,9 +402,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
         try {
           const { requestId, reason } = JSON.parse(args);
           // Mark the current conversation as ended in the database
-          if (requestId) {
-            this.inbox.endConversation(requestId, reason);
-          }
+          this.inbox.endConversation(this.extractValidConversationId(requestId), reason);
           // Clear the current conversation selection
           this.selectedConversationId = null;
           // Add a thought about ending the conversation if reason provided
@@ -448,5 +443,16 @@ When you have thoughts to share, use the think tool with meaningful content firs
       return addEllipsis ? processedText.substring(0, maxLength) + '...' : processedText.substring(0, maxLength);
     }
     return processedText;
+  }
+
+  private extractValidConversationId(rawId: string): string {
+    if (typeof rawId !== 'string') throw new Error(`Invalid conversation ID format: "${rawId}", ignoring`);
+
+    // Extract UUID pattern from the input
+    const uuidMatch = rawId.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i);
+    if (!uuidMatch) {
+      throw new Error(`Invalid conversation ID format: "${rawId}", ignoring`);
+    }
+    return uuidMatch[0];
   }
 }

@@ -10,7 +10,7 @@ class ThoughtManager {
   }
 
   getConcatenatedThoughts(): string {
-    return this.thoughts.map(t => `<THOUGHTS>${t}</THOUGHTS>`).join('\n');
+    return "(think) " + this.thoughts.map(t => `\n${t}`).join('\n');
   }
 
   hasThoughts(): boolean {

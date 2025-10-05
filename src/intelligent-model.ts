@@ -85,7 +85,7 @@ export class IntelligentModel {
     const endTime = performance.now();
     const timeElapsedSeconds = (endTime - startTime) / 1000;
 
-    const actualEnergyConsumed = timeElapsedSeconds;
+    const actualEnergyConsumed = timeElapsedSeconds * 2;
     energyRegulator.consumeEnergy(actualEnergyConsumed);
 
     this.updateConsumption(this.currentModel, actualEnergyConsumed);
@@ -202,7 +202,7 @@ export class IntelligentModel {
             properties: {
               level: {
                 type: 'number',
-                description: 'The energy level percentage to wait for (0-100)'
+                description: 'The energy level percentage to wait for (0-100), where 100% is fully rested and 0% is depleted'
               }
             },
             required: ['level']
