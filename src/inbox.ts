@@ -18,7 +18,9 @@ export interface ConversationData {
   metadata: {
     totalEnergyConsumed: number;
     sleepCycles: number;
-  }
+  };
+  ended?: boolean;
+  endedReason?: string;
 }
 
 export interface ConversationStats {
@@ -41,6 +43,7 @@ export class Inbox {
   private insertResponseStmt!: Database.Statement;
   private getPendingStmt!: Database.Statement;
   private getUnansweredCountStmt!: Database.Statement;
+  private endConversationStmt!: Database.Statement;
 
   constructor() {
     this.db = new Database(DB_PATH);
@@ -59,7 +62,9 @@ export class Inbox {
         input_message TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         total_energy_consumed INTEGER DEFAULT 0,
-        sleep_cycles INTEGER DEFAULT 0
+        sleep_cycles INTEGER DEFAULT 0,
+        ended BOOLEAN DEFAULT FALSE,
+        ended_reason TEXT
       );
 
       CREATE TABLE IF NOT EXISTS responses (
@@ -75,6 +80,13 @@ export class Inbox {
       CREATE INDEX IF NOT EXISTS idx_conversation_request_id ON conversations (request_id);
       CREATE INDEX IF NOT EXISTS idx_response_conversation_id ON responses (conversation_id);
     `);
+
+    // Migration: Add ended_reason column if it doesn't exist
+    try {
+      this.db.exec(`ALTER TABLE conversations ADD COLUMN ended_reason TEXT`);
+    } catch (error) {
+      // Column probably already exists, ignore error
+    }
   }
 
   private prepareStatements() {
@@ -112,6 +124,9 @@ export class Inbox {
         GROUP BY c.id
         HAVING COUNT(r.id) = 0
       )
+    `);
+    this.endConversationStmt = this.db.prepare(`
+      UPDATE conversations SET ended = TRUE WHERE request_id = ?
     `);
   }
 
@@ -205,6 +220,25 @@ export class Inbox {
     }
   }
 
+  // Mark a conversation as ended (won't be reviewed anymore)
+  endConversation(requestId: string, reason?: string) {
+    try {
+      const stmt = this.db.prepare(`
+        UPDATE conversations
+        SET ended = TRUE, ended_reason = ?
+        WHERE request_id = ?
+      `);
+      const result = stmt.run(reason || null, requestId);
+      if (result.changes > 0) {
+        console.log(`🏁 Conversation ${requestId} marked as ended${reason ? `: ${reason}` : ''}`);
+      } else {
+        console.log(`🏁 Conversation ${requestId} not found or already ended`);
+      }
+    } catch (error) {
+      console.error('Error ending conversation:', error);
+    }
+  }
+
   // Get conversation data
   getConversation(requestId: string): ConversationData | null {
     try {
@@ -228,7 +262,9 @@ export class Inbox {
         metadata: {
           totalEnergyConsumed: conversation.total_energy_consumed,
           sleepCycles: conversation.sleep_cycles
-        }
+        },
+        ended: conversation.ended,
+        endedReason: conversation.ended_reason
       };
     } catch (error) {
       console.error('Error retrieving conversation:', error);
@@ -275,13 +311,14 @@ export class Inbox {
     }
   }
 
-  // Get recent completed conversations (those with at least one response)
+  // Get recent completed conversations (those with at least one response, not ended)
   getRecentCompletedConversations(limit: number = 5): ConversationData[] {
     try {
       const stmt = this.db.prepare(`
         SELECT c.request_id
         FROM conversations c
         INNER JOIN responses r ON c.id = r.conversation_id
+        WHERE c.ended = FALSE
         GROUP BY c.id, c.request_id
         HAVING COUNT(r.id) > 0
         ORDER BY c.created_at DESC

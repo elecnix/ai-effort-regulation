@@ -242,6 +242,23 @@ export class IntelligentModel {
           }
         }
       },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'end_conversation',
+          description: 'End the current conversation focus and return to general review mode. Use this when you feel the conversation has been sufficiently addressed or when you want to move on to other tasks.',
+          parameters: {
+            type: 'object',
+            properties: {
+              reason: {
+                type: 'string',
+                description: 'Optional reason for ending the conversation (helps with learning and reflection)'
+              }
+            },
+            required: []
+          }
+        }
+      },
     ];
 
     // Filter tools based on allowed tools

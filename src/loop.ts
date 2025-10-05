@@ -85,6 +85,8 @@ When reviewing previous conversations, you can also use the respond tool to add 
 
 Use the think tool to record your internal thoughts and reflections. This helps you reason through complex problems and maintain continuity in your thinking. Always provide meaningful, substantive thoughts - never use the think tool with empty content.
 
+Use the end_conversation tool when you feel a conversation has been sufficiently addressed or when you want to move on to other tasks. This helps you manage your focus and energy efficiently.
+
 Reflect on your current energy level, recent actions, and how you can best serve your user. Vary your thoughts to avoid repetition. Do not copy or repeat the content of any previous messages.
 
 When you have thoughts to share, use the think tool with meaningful content first, then use other tools if needed. Do not combine thoughts and tool calls in the same response unless the tool is for responding to a message.`;
@@ -151,10 +153,10 @@ When you have thoughts to share, use the think tool with meaningful content firs
       let allowedTools: string[];
       if (targetConversation) {
         // Answering unanswered conversation
-        allowedTools = ['respond', 'await_energy', 'think'];
+        allowedTools = ['respond', 'await_energy', 'think', 'end_conversation'];
       } else {
         // Reviewing completed conversations for potential improvements
-        allowedTools = ['select_conversation', 'await_energy', 'think'];
+        allowedTools = ['select_conversation', 'await_energy', 'think', 'end_conversation'];
       }
 
       const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, allowedTools);
@@ -338,7 +340,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
       this.getEphemeralSystemMessage(conversationsToInclude, 0), // 0 unanswered since we're reviewing completed
       {
         role: 'user',
-        content: `You have selected this conversation for focused improvement. To add a response to the previous responses, use the respond tool, or use await_energy to manage your energy.`
+        content: `You have selected this conversation for focused improvement. To add a response to the previous responses, use the respond tool, or use await_energy to manage your energy. Use end_conversation if you feel this conversation has been sufficiently addressed.`
       }
     ];
 
@@ -346,7 +348,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
       console.log(`${this.getEnergyIndicator()} DEBUG LLM full prompt (selected conversation):`, JSON.stringify(messages, null, 2));
     }
 
-    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think']);
+    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think', 'end_conversation']);
 
     // Clear the selection after handling
     this.selectedConversationId = null;
@@ -391,6 +393,23 @@ When you have thoughts to share, use the think tool with meaningful content firs
           await this.selectConversation(requestId);
         } catch (parseError) {
           console.log(`🎯 Malformed select_conversation tool call with args "${args}", ignoring`);
+        }
+      } else if (name === 'end_conversation') {
+        try {
+          const { reason } = JSON.parse(args);
+          console.log(`🏁 Ending conversation focus${reason ? `: ${reason}` : ''}`);
+          // Mark the current conversation as ended in the database
+          if (this.selectedConversationId) {
+            this.inbox.endConversation(this.selectedConversationId, reason);
+          }
+          // Clear the current conversation selection
+          this.selectedConversationId = null;
+          // Add a thought about ending the conversation if reason provided
+          if (reason && reason.trim()) {
+            this.reviewThoughtManager.addThought(`Ended focused conversation work: ${reason}`);
+          }
+        } catch (parseError) {
+          console.log(`🏁 Malformed end_conversation tool call with args "${args}", ignoring`);
         }
       } else if (name === 'think') {
         try {
