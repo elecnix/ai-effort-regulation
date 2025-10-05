@@ -22,7 +22,7 @@ export class SensitiveLoop {
   private isRunning = false;
   private modelSwitches = 0;
   private stoppedByTimeout = false;
-  private readonly MAX_HISTORY_LENGTH = 100;
+  private readonly MAX_HISTORY_LENGTH = 10;
   private debugMode = false;
 
   constructor(debugMode: boolean = false) {
@@ -41,7 +41,7 @@ export class SensitiveLoop {
         if (conversation) {
           // Add as context entries
           this.history.push({
-            role: 'system',
+            role: 'user',
             content: `(conversation ${convId}): ${conversation.inputMessage}`,
             timestamp: new Date(),
             requestId: convId
@@ -93,9 +93,7 @@ export class SensitiveLoop {
   private async runLoop() {
     while (this.isRunning) {
       try {
-        if (this.energyRegulator.getEnergy() < -50) {
-          console.log(`⚠️ Critical energy (${this.energyRegulator.getEnergy()}) - forced recovery sleep`);
-          await this.sleep(10);
+        if (await this.energyRegulator.awaitEnergyLevel(this.intelligentModel.getEstimatedEnergyCost())) {
           continue;
         }
 
@@ -122,7 +120,7 @@ export class SensitiveLoop {
 
       } catch (error) {
         console.error('Error in sensitive loop:', error);
-        await this.sleep(1); // Error recovery sleep
+        await this.energyRegulator.awaitEnergyLevel(100); // Error recovery sleep
       }
     }
   }
@@ -141,14 +139,27 @@ export class SensitiveLoop {
     this.history.push(entry);
   }
 
-  private async sleep(seconds: number) {
-    await new Promise(resolve => setTimeout(resolve, seconds * 1000));
-    this.energyRegulator.replenishEnergy(seconds);
-  }
-
 
   private async unifiedCognitiveAction() {
     try {
+      // Check if there are pending messages - if so, respond to the first one directly
+      const pendingIds = this.getAvailableConversationIds();
+      if (pendingIds.length > 0) {
+        const firstId = pendingIds[0]!;
+        const userMessage: string = this.inbox.getPendingMessages().find(m => m.id === firstId)?.content || 'Unknown message';
+        const responseContent = `Thank you for your message: "${userMessage}". I am processing it now.`;
+        await this.respondToRequest(firstId, responseContent);
+        return;
+      }
+
+      // No pending messages - proceed with autonomous thinking/sleeping
+      // If energy is urgent, force sleep to avoid LLM failures
+      if (this.energyRegulator.getEnergy() < 0) {
+        console.log(`⚠️ Urgent energy (${this.energyRegulator.getEnergy()}) - forced recovery sleep`);
+        await this.energyRegulator.sleep(10);
+        return;
+      }
+
       // Build conversation history (rely on prompt caching for efficiency)
       const conversationHistory = this.buildUnifiedContext();
 
@@ -166,43 +177,34 @@ export class SensitiveLoop {
         energyGuidance = "Normal operation, can perform complex tasks";
       }
       const agencyPrompt = `You are an AI assistant with energy levels that affect your performance.
-Check for pending user messages. If any exist, respond to the first one using this exact format:
-RESPOND: <conversationId>
-<your response here>
-
-Available pending conversation IDs: ${this.getAvailableConversationIds().join(', ') || 'None'}
 
 If no pending messages, you can think freely or sleep to save energy.
 
-To think, just respond with your inner monologue:
+To think, just respond with your inner monologue as plain text (no formatting, bold, or markdown). Reflect on your current energy level, recent actions, and how you can best serve your user. Vary your thoughts to avoid repetition. Do not copy or repeat the content of any previous messages.
 
-\`\`\`
-I feel great, I'm ready to help my user with anything!
-\`\`\`
+To sleep, use this exact XML format:
+<SLEEP seconds="5"/>
 
-When you need to rest, type "SLEEP: <seconds>" to rest to replenish energy (specify seconds: 1-10). For example:
-
-\`\`\`
-SLEEP: 5
-\`\`\`
-
-Current energy level: ${currentEnergy} (${energyStatus})
+Current energy level: ${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})
 
 ENERGY GUIDANCE: ${energyGuidance}
 
-Your response:`;
+When energy is low, ALWAYS choose to SLEEP instead of thinking. Aim to stay above 50% energy.
+
+Respond exactly as instructed above. No extra text, formatting, or deviations.`;
+
+      this.addToHistory({
+        role: 'system',
+        content: `There are ${this.inbox.getStats().pendingCount} conversations in the inbox. Your energy level is ${this.energyRegulator.getEnergyPercentage()}% (${energyStatus}).`
+      });
 
       const messages = [
         { role: 'system', content: agencyPrompt },
         ...conversationHistory,
-        {
-          role: 'user',
-          content: `There are ${this.inbox.getStats().pendingCount} conversations in the inbox. `
-        }
       ];
 
       if (this.debugMode) {
-        console.log(`🧠 DEBUG [🔋 ${currentEnergy}] LLM full prompt:`, JSON.stringify(messages, null, 2));
+        console.log(`🧠 DEBUG [🔋 ${this.energyRegulator.getEnergyPercentage()}%] LLM full prompt:`, JSON.stringify(messages, null, 2));
       }
 
       const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator.getEnergy(), false);
@@ -222,8 +224,8 @@ Your response:`;
     // Build conversation history from recent interactions
     const messages: Array<{ role: string; content: string }> = [];
 
-    // Add recent conversation history (last 20 entries for better context)
-    const recentHistory = this.history.slice(-20); // Last 20 entries for better context
+    // Add recent conversation history (last 5 entries for better context)
+    const recentHistory = this.history.slice(-5); // Last 5 entries for better context
     for (const entry of recentHistory) {
       messages.push({
         role: entry.role,
@@ -231,8 +233,13 @@ Your response:`;
       });
     }
 
-    // Add any pending messages as user messages
-    // Note: In a more sophisticated system, we'd track pending messages separately
+    // Ensure the last message is not from assistant to avoid LLM confusion
+    if (messages.length > 0) {
+      const last = messages[messages.length - 1];
+      if (last!.role === 'assistant') {
+        messages.pop();
+      }
+    }
 
     return messages;
   }
@@ -240,62 +247,60 @@ Your response:`;
   private async executeLLMAutonomousDecision(modelResponse: ModelResponse) {
     try {
       // Clean the response
-      const cleanResponse = modelResponse.content.trim().toUpperCase();
+      const cleanResponse = modelResponse.content.trim();
 
-      const getEnergyIndicator = (energy: number) => {
-        const level = Math.max(0, Math.min(7, Math.floor(energy / 12.5)));
-        const symbol = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'][level];
+      // Parse XML actions
+      const respondMatch = cleanResponse.match(/<RESPOND id="([^"]+)">(.*?)<\/RESPOND>/s);
+      if (respondMatch) {
+        const requestId = respondMatch[1]!;
+        const responseContent = respondMatch[2]!.trim();
+        await this.respondToRequest(requestId, responseContent);
+        return;
+      }
 
-        // Color gradient: red (low) to green (high)
-        let colorCode = '\x1b[31m'; // Red for low energy
-        if (level >= 5) {
-          colorCode = '\x1b[32m'; // Green for high energy
-        } else if (level >= 3) {
-          colorCode = '\x1b[33m'; // Yellow for medium energy
-        }
-
-        return `${colorCode}${symbol}\x1b[0m`; // Add reset code
-      };
-
-      if (cleanResponse.startsWith('SLEEP:')) {
-        const sleepMatch = cleanResponse.match(/SLEEP:\s*(\d+)/i);
-        const sleepTime = sleepMatch && sleepMatch[1] ? parseInt(sleepMatch[1]) : 1;
+      const sleepMatch = cleanResponse.match(/<SLEEP seconds="(\d+)"\/>/);
+      if (sleepMatch) {
+        const sleepTime = parseInt(sleepMatch[1]!);
         const clampedSleep = Math.max(1, Math.min(10, sleepTime));
         console.log(`😴 Sleep: ${clampedSleep}s`);
-        await this.sleep(clampedSleep);
-      } else if (cleanResponse.startsWith('RESPOND:')) {
-        const respondMatch = cleanResponse.match(/RESPOND:\s*([^\s\n]+)/i);
-        const requestId = respondMatch && respondMatch[1] ? respondMatch[1].trim() : null;
-        if (requestId && respondMatch) {
-          // Extract the response content after the RESPOND: <id> part
-          const respondPrefix = respondMatch[0];
-          const responseContent = modelResponse.content.substring(modelResponse.content.indexOf(respondPrefix) + respondPrefix.length).trim();
-          await this.respondToRequest(requestId, responseContent);
-        } else {
-          // Default to warning if unclear
-          const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-          console.log(`${indicator} ⚠️ Confusion: ${this.truncateText(modelResponse.content.trim())}`);
-        }
-      } else {
-        // Default to reflect/thinking for any other response
-        const indicator = getEnergyIndicator(this.energyRegulator.getEnergy());
-        console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(modelResponse.content.trim())}`);
-
-        // Add the LLM's thought to history as an assistant message
-        this.addToHistory({
-          role: 'assistant',
-          content: modelResponse.content.trim(),
-          timestamp: new Date(),
-          metadata: {
-            energyLevel: this.energyRegulator.getEnergy(),
-            modelUsed: modelResponse.modelUsed
-          }
-        });
+        await this.energyRegulator.sleep(clampedSleep);
+        return;
       }
+
+      // Default to thinking/reflecting
+      const indicator = this.getEnergyIndicator();
+      console.log(`${indicator} 🤔 LLM thought: ${this.truncateText(cleanResponse)}`);
+
+      // Add the LLM's thought to history as an assistant message
+      this.addToHistory({
+        role: 'assistant',
+        content: cleanResponse,
+        timestamp: new Date(),
+        metadata: {
+          energyLevel: this.energyRegulator.getEnergy(),
+          modelUsed: modelResponse.modelUsed
+        }
+      });
 
     } catch (error: any) {
       console.error(`❌ Error:`, error?.message || error);
     }
+  }
+
+  private getEnergyIndicator(): string {
+    const percentage = this.energyRegulator.getEnergyPercentage();
+    const level = Math.max(0, Math.min(7, Math.floor(percentage / 12.5)));
+    const symbol = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'][level];
+
+    // Color gradient: red (low) to green (high)
+    let colorCode = '\x1b[31m'; // Red for low energy
+    if (level >= 5) {
+      colorCode = '\x1b[32m'; // Green for high energy
+    } else if (level >= 3) {
+      colorCode = '\x1b[33m'; // Yellow for medium energy
+    }
+
+    return `${colorCode}${symbol}\x1b[0m`; // Add reset code
   }
 
   private getAvailableConversationIds(): string[] {

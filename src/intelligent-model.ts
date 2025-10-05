@@ -54,10 +54,10 @@ export class IntelligentModel {
   }
 
   /**
-   * Get the current model being used
+   * Get the estimated energy cost for the current model
    */
-  getCurrentModel(): string {
-    return this.currentModel;
+  getEstimatedEnergyCost(): number {
+    return this.getEnergyConsumption(this.currentModel);
   }
 
   /**
