@@ -82,11 +82,11 @@ When reviewing previous conversations, you can also use the respond tool to add 
 
 Use the think tool to record your internal thoughts and reflections when the next action is not clear. If you decide to use the think tool, provide meaningful, substantive thoughts. Thinking costs energy.
 
-Do not combine thoughts and tool calls in the same response unless the tools are for responding to conversation.
+Do not combine thoughts and tool calls in the same response unless the tools are for responding to conversation or snoozing.
 
 Use the end_conversation tool when you feel a conversation is over. Keep conversations open until the initial intent is completed or the user clearly states the conversation is over. The energy cost of the conversation is shown in the metadata of the conversation. Focusing on a conversation costs extra energy.
 
-Use the snooze_conversation tool to snooze a conversation for a specified number of minutes. You will conserve energy until the snooze period expires. When the user responds, the conversation will be reactivated. Use this when you need to set a reminder for later. When you see a conversation marked with [Previously snoozed until: ...], it means the snooze period has expired and you should now perform the requested action rather than snoozing again.`;
+Use the snooze_conversation tool to snooze a conversation for a specified number of minutes. You will conserve energy until the snooze period expires. Simultaneously, respond at the same time as snoozing to let the user know you are handling their request. When the user responds, the conversation will be reactivated. Use this when you need to set a reminder for later. When you see a conversation marked with [Previously snoozed until: ...], it means the snooze period has expired and you should now perform the requested action rather than snoozing again.`;
 
   private readonly systemInboxMessage = `To respond to a pending conversation, use the respond tool with the appropriate conversation ID and your response content.`;
 
@@ -217,7 +217,7 @@ Use the snooze_conversation tool to snooze a conversation for a specified number
     const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
     message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${totalMessages} total messages, and ${totalUnansweredCount} total unanswered conversations.`;
     if (conversationsToInclude.length > 0) {
-      message = `${message}\nYou are currently focused on one conversation. Use the respond tool to add a response, or use await_energy to manage your energy.`;
+      message = `${message}\nYou are currently focused on one conversation. Use the respond tool, snooze_conversation, or await_energy.`;
     } else if (totalMessages == 0) {
       message = `${message}\nAim to stay at 100% energy with await_energy.`;
     }
@@ -418,9 +418,9 @@ Use the snooze_conversation tool to snooze a conversation for a specified number
         try {
           const { requestId, minutes } = JSON.parse(args);
           // Snooze the conversation for the specified number of minutes
-          this.inbox.snoozeConversation(this.extractValidConversationId(requestId), minutes);
+          const snoozeUntil = this.inbox.snoozeConversation(this.extractValidConversationId(requestId), minutes);
           // Add a thought about snoozing the conversation
-          this.reviewThoughtManager.addThought(`Snoozed conversation ${requestId} for ${minutes} minutes to allow user more time to respond.`);
+          this.reviewThoughtManager.addThought(`Snoozed conversation ${requestId} for ${minutes} minutes until ${snoozeUntil.toISOString()}`);
         } catch (parseError) {
           console.log(`😴 Malformed snooze_conversation tool call with args "${args}", ignoring`);
         }

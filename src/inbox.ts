@@ -252,24 +252,21 @@ export class Inbox {
   }
 
   // Snooze a conversation for a specified number of minutes
-  snoozeConversation(requestId: string, minutes: number) {
-    try {
-      const snoozeUntil = new Date();
-      snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
+  snoozeConversation(requestId: string, minutes: number): Date {
+    const snoozeUntil = new Date();
+    snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
 
-      const stmt = this.db.prepare(`
-        UPDATE conversations
-        SET snooze_until = ?, snooze_duration = ?
-        WHERE request_id = ?
-      `);
-      const result = stmt.run(snoozeUntil.toISOString(), minutes, requestId);
-      if (result.changes > 0) {
-        console.log(`😴 Snoozed conversation ${requestId} for ${minutes} minutes (until ${snoozeUntil.toISOString()})`);
-      } else {
-        console.log(`😴 Conversation ${requestId} not found`);
-      }
-    } catch (error) {
-      console.error('Error snoozing conversation:', error);
+    const stmt = this.db.prepare(`
+      UPDATE conversations
+      SET snooze_until = ?, snooze_duration = ?
+      WHERE request_id = ?
+    `);
+    const result = stmt.run(snoozeUntil.toISOString(), minutes, requestId);
+    if (result.changes > 0) {
+      console.log(`😴 Snoozed conversation ${requestId} for ${minutes} minutes (until ${snoozeUntil.toISOString()})`);
+      return snoozeUntil;
+    } else {
+      throw new Error(`😴 Conversation ${requestId} not found`);
     }
   }
 
