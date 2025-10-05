@@ -73,21 +73,18 @@ export class SensitiveLoop {
     console.log('Sensitive loop stopped');
   }
 
+
   private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance. You have access to tools to perform actions. PRIORITY: Always respond to pending messages FIRST before considering energy management.
 
 When there are messages in your inbox, USE THE RESPOND TOOL immediately to answer them. Only consider energy management after all messages are handled.
 
 When reviewing previous conversations, you can also use the respond tool to add to, improve, or follow up on previous responses if you have additional valuable insights to share.
 
-Energy load averages show recent energy expenditure rates (similar to Linux load averages):
-- 1min: Average energy consumed per minute in the last minute
-- 5min: Average energy consumed per minute in the last 5 minutes  
-- 15min: Average energy consumed per minute in the last 15 minutes
-Higher values indicate more intense recent activity. Use these to understand workload patterns and plan energy management.
+Thinking costs $1 per second. Every action you take consumes energy that costs money. Be efficient - don't waste time on unnecessary thinking or over-analysis.
 
 Use the think tool to record your internal thoughts and reflections. This helps you reason through complex problems and maintain continuity in your thinking. Always provide meaningful, substantive thoughts - never use the think tool with empty content. Thinking consumes energy!
 
-Use the end_conversation tool when you feel a conversation has been sufficiently addressed or when you want to move on to other tasks. This helps you manage your focus and energy efficiently. The energy consumed so far by the conversation is shown in the metadata of the conversation. Overthinking is a waste of energy.
+Use the end_conversation tool when you feel a conversation has been sufficiently addressed or when you want to move on to other tasks. This helps you manage your focus and energy efficiently. The cost spent so far by the conversation is shown in the metadata of the conversation. Overthinking is a waste of energy.
 
 Reflect on your current energy level, recent actions, and how you can best serve your user. Vary your thoughts to avoid repetition. Do not copy or repeat the content of any previous messages.
 
@@ -127,7 +124,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
         const recentCompleted = this.inbox.getRecentCompletedConversations(reviewCount);
         conversationsToInclude = recentCompleted.map(conv => ({
           id: conv.requestId,
-          requestMessage: `${conv.inputMessage || ''} [Energy consumed: ${conv.metadata.totalEnergyConsumed.toFixed(1)} units, ${conv.responses.length} responses]`,
+          requestMessage: `${conv.inputMessage || ''} [Cost: $${conv.metadata.totalEnergyConsumed.toFixed(2)}, ${conv.responses.length} responses]`,
           responseMessages: conv.responses.map(r => r.content),
           timestamp: new Date() // Use current time for ordering
         }));
@@ -218,9 +215,8 @@ When you have thoughts to share, use the think tool with meaningful content firs
     let message = '(ephemeral)\n';
     const currentEnergy = this.energyRegulator.getEnergy();
     const energyStatus = this.energyRegulator.getStatus();
-    const energyLoadAverages = this.energyRegulator.getEnergyLoadAverages();
     const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
-    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nEnergy load averages: ${energyLoadAverages['1min']}/min, ${energyLoadAverages['5min']}/min, ${energyLoadAverages['15min']}/min.\nThere are ${totalUnansweredCount} total unanswered conversations.`;
+    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${totalUnansweredCount} total unanswered conversations.`;
     if (conversationsToInclude.length > 0) {
       message = `${message}\nYou are currently focused on one conversation. Use the respond tool to add a response, or use await_energy to manage your energy.`;
     }
@@ -337,7 +333,7 @@ When you have thoughts to share, use the think tool with meaningful content firs
 
     const conversationsToInclude = [{
       id: conversation.requestId,
-      requestMessage: `${conversation.inputMessage || ''} [Energy consumed: ${conversation.metadata.totalEnergyConsumed.toFixed(1)} units, ${conversation.responses.length} responses]`,
+      requestMessage: `${conversation.inputMessage || ''} [Cost: $${conversation.metadata.totalEnergyConsumed.toFixed(2)}, ${conversation.responses.length} responses]`,
       responseMessages: conversation.responses.map(r => r.content),
       timestamp: new Date()
     }];
