@@ -264,6 +264,29 @@ export class IntelligentModel {
           }
         }
       },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'snooze_conversation',
+          description: 'Snooze a conversation for a specified number of minutes. The conversation will not appear in the pending list until the snooze period expires. Use this when you need to schedule a future action or reminder, such as "do something in X minutes/hours". This helps you conserve energy by not constantly checking conversations that need attention later.',
+          parameters: {
+            type: 'object',
+            properties: {
+              requestId: {
+                type: 'string',
+                description: 'The ID of the conversation to snooze'
+              },
+              minutes: {
+                type: 'number',
+                description: 'Number of minutes to snooze the conversation (1-1440, i.e., up to 24 hours)',
+                minimum: 1,
+                maximum: 1440
+              }
+            },
+            required: ['requestId', 'minutes']
+          }
+        }
+      },
     ];
 
     // Filter tools based on allowed tools

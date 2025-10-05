@@ -84,7 +84,9 @@ Use the think tool to record your internal thoughts and reflections when the nex
 
 Do not combine thoughts and tool calls in the same response unless the tools are for responding to conversation.
 
-Manage your focus. Get things done. Use the end_conversation tool when you feel a conversation has a sufficient number of responses. End costly conversations to preserve energy. The energy cost of the conversation is shown in the metadata of the conversation.`;
+Use the end_conversation tool when you feel a conversation is over. Keep conversations open until the initial intent is completed or the user clearly states the conversation is over. The energy cost of the conversation is shown in the metadata of the conversation. Focusing on a conversation costs extra energy.
+
+Use the snooze_conversation tool to snooze a conversation for a specified number of minutes. You will conserve energy until the snooze period expires. When the user responds, the conversation will be reactivated. Use this when you need to set a reminder for later.`;
 
   private readonly systemInboxMessage = `To respond to a pending conversation, use the respond tool with the appropriate conversation ID and your response content.`;
 
@@ -110,7 +112,7 @@ Manage your focus. Get things done. Use the end_conversation tool when you feel 
       if (targetConversation) {
         // Focus on one unanswered conversation
         conversationsToInclude = [targetConversation];
-        instruction = `Focus on the conversation above and decide whether to respond, think, end_conversation, or await_energy.`;
+        instruction = `Focus on the conversation above and decide whether to respond, think, snooze_conversation, end_conversation, or await_energy.`;
       } else {
         // No unanswered conversations - review recent completed ones for potential improvements
         // Adjust review count based on energy level: more energy = more conversations to review
@@ -121,12 +123,12 @@ Manage your focus. Get things done. Use the end_conversation tool when you feel 
         const recentCompleted = this.inbox.getRecentCompletedConversations(reviewCount);
         conversationsToInclude = recentCompleted.map(conv => ({
           id: conv.requestId,
-          requestMessage: `${conv.inputMessage || ''} [Cost: $${conv.metadata.totalEnergyConsumed.toFixed(2)}, ${conv.responses.length} responses]`,
+          requestMessage: `${conv.inputMessage || ''} [Cost: ${conv.metadata.totalEnergyConsumed} units, ${conv.responses.length} responses]`,
           responseMessages: conv.responses.map(r => r.content),
           timestamp: new Date() // Use current time for ordering
         }));
         instruction = conversationsToInclude.length > 0
-          ? `Review the recent conversations above. Use the select_conversation tool to choose one for adding to, or use await_energy to manage energy.`
+          ? `Review the recent conversations above. Use the select_conversation tool to choose one for adding to, snooze_conversation for a specified number of minutes, or use await_energy to manage energy.`
           : 'No recent conversations to review. Use await_energy to remain at 100% energy.';
       }
 
@@ -149,10 +151,10 @@ Manage your focus. Get things done. Use the end_conversation tool when you feel 
       let allowedTools: string[];
       if (targetConversation) {
         // Answering unanswered conversation
-        allowedTools = ['respond', 'await_energy', 'think', 'end_conversation'];
+        allowedTools = ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation'];
       } else {
         // Reviewing completed conversations for potential improvements
-        allowedTools = ['select_conversation', 'await_energy', 'think', 'end_conversation'];
+        allowedTools = ['select_conversation', 'await_energy', 'think', 'end_conversation', 'snooze_conversation'];
       }
 
       const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, allowedTools);
@@ -330,7 +332,7 @@ Manage your focus. Get things done. Use the end_conversation tool when you feel 
 
     const conversationsToInclude = [{
       id: conversation.requestId,
-      requestMessage: `${conversation.inputMessage || ''} [Cost: ${conversation.metadata.totalEnergyConsumed.toFixed(2)} units, ${conversation.responses.length} responses]`,
+      requestMessage: `${conversation.inputMessage || ''} [Cost: ${conversation.metadata.totalEnergyConsumed} units, ${conversation.responses.length} responses]`,
       responseMessages: conversation.responses.map(r => r.content),
       timestamp: new Date()
     }];
@@ -350,7 +352,7 @@ Manage your focus. Get things done. Use the end_conversation tool when you feel 
       console.log(`${this.getEnergyIndicator()} DEBUG LLM full prompt (selected conversation):`, JSON.stringify(messages, null, 2));
     }
 
-    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think', 'end_conversation']);
+    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation']);
 
     // Attribute the energy consumed during thinking to the selected conversation
     this.inbox.addEnergyConsumption(this.selectedConversationId, modelResponse.energyConsumed);
@@ -411,6 +413,16 @@ Manage your focus. Get things done. Use the end_conversation tool when you feel 
           }
         } catch (parseError) {
           console.log(`🏁 Malformed end_conversation tool call with args "${args}", ignoring`);
+        }
+      } else if (name === 'snooze_conversation') {
+        try {
+          const { requestId, minutes } = JSON.parse(args);
+          // Snooze the conversation for the specified number of minutes
+          this.inbox.snoozeConversation(this.extractValidConversationId(requestId), minutes);
+          // Add a thought about snoozing the conversation
+          this.reviewThoughtManager.addThought(`Snoozed conversation ${requestId} for ${minutes} minutes to allow user more time to respond.`);
+        } catch (parseError) {
+          console.log(`😴 Malformed snooze_conversation tool call with args "${args}", ignoring`);
         }
       } else if (name === 'think') {
         try {

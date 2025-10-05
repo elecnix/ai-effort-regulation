@@ -87,6 +87,18 @@ export class Inbox {
     } catch (error) {
       // Column probably already exists, ignore error
     }
+
+    // Migration: Add snooze columns if they don't exist
+    try {
+      this.db.exec(`ALTER TABLE conversations ADD COLUMN snooze_until DATETIME`);
+    } catch (error) {
+      // Column probably already exists, ignore error
+    }
+    try {
+      this.db.exec(`ALTER TABLE conversations ADD COLUMN snooze_duration INTEGER DEFAULT 0`);
+    } catch (error) {
+      // Column probably already exists, ignore error
+    }
   }
 
   private prepareStatements() {
@@ -111,6 +123,7 @@ export class Inbox {
       FROM conversations c
       LEFT JOIN responses r ON c.id = r.conversation_id
       WHERE c.input_message IS NOT NULL AND c.input_message != ''
+        AND (c.snooze_until IS NULL OR c.snooze_until < strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
       GROUP BY c.id, c.request_id, c.input_message, c.created_at
       HAVING COUNT(r.id) = 0
       ORDER BY c.created_at ASC
@@ -121,6 +134,7 @@ export class Inbox {
         FROM conversations c
         LEFT JOIN responses r ON c.id = r.conversation_id
         WHERE c.input_message IS NOT NULL AND c.input_message != ''
+          AND (c.snooze_until IS NULL OR c.snooze_until < strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
         GROUP BY c.id
         HAVING COUNT(r.id) = 0
       )
@@ -141,17 +155,6 @@ export class Inbox {
   addMessage(message: Message) {
     // Messages are stored directly in database by server.ts, no in-memory management needed
     console.log(`📬 Message ${message.id} stored in database`);
-  }
-
-  // Get pending message IDs (for the LLM prompt) - now queries database
-  getPendingMessageIds(limit: number = 5): string[] {
-    try {
-      const rows = this.getPendingStmt.all() as { id: string }[];
-      return rows.slice(0, limit).map(row => row.id);
-    } catch (error) {
-      console.error('Error getting pending message IDs:', error);
-      return [];
-    }
   }
 
   // Get all pending messages - now queries database
@@ -248,6 +251,28 @@ export class Inbox {
     }
   }
 
+  // Snooze a conversation for a specified number of minutes
+  snoozeConversation(requestId: string, minutes: number) {
+    try {
+      const snoozeUntil = new Date();
+      snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
+
+      const stmt = this.db.prepare(`
+        UPDATE conversations
+        SET snooze_until = ?, snooze_duration = ?
+        WHERE request_id = ?
+      `);
+      const result = stmt.run(snoozeUntil.toISOString(), minutes, requestId);
+      if (result.changes > 0) {
+        console.log(`😴 Snoozed conversation ${requestId} for ${minutes} minutes (until ${snoozeUntil.toISOString()})`);
+      } else {
+        console.log(`😴 Conversation ${requestId} not found`);
+      }
+    } catch (error) {
+      console.error('Error snoozing conversation:', error);
+    }
+  }
+
   // Get conversation data
   getConversation(requestId: string): ConversationData | null {
     try {
@@ -288,6 +313,7 @@ export class Inbox {
         SELECT c.request_id, c.input_message, c.created_at
         FROM conversations c
         LEFT JOIN responses r ON c.id = r.conversation_id
+        WHERE (c.snooze_until IS NULL OR c.snooze_until < strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
         GROUP BY c.id, c.request_id, c.input_message, c.created_at
         ORDER BY c.created_at DESC
         LIMIT ?
@@ -328,6 +354,7 @@ export class Inbox {
         FROM conversations c
         INNER JOIN responses r ON c.id = r.conversation_id
         WHERE c.ended = FALSE
+          AND (c.snooze_until IS NULL OR c.snooze_until < strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
         GROUP BY c.id, c.request_id
         HAVING COUNT(r.id) > 0
         ORDER BY c.created_at DESC
