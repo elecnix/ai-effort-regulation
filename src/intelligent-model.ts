@@ -59,7 +59,8 @@ export class IntelligentModel {
   async generateResponse(
     messages: Array<{ role: string; content: string }>,
     energyRegulator: EnergyRegulator,
-    urgent: boolean = false
+    urgent: boolean = false,
+    allowedTools: string[] = ['respond', 'await_energy', 'select_conversation']
   ): Promise<ModelResponse> {
     const provider = process.env.AI_PROVIDER || 'ollama';
 
@@ -80,7 +81,7 @@ export class IntelligentModel {
 
     // Generate response
     const startTime = performance.now();
-    const llmResponse = await this.generateLLMResponse(messages, this.currentModel, urgent);
+    const llmResponse = await this.generateLLMResponse(messages, this.currentModel, urgent, allowedTools);
     const endTime = performance.now();
     const timeElapsedSeconds = (endTime - startTime) / 1000;
 
@@ -161,13 +162,14 @@ export class IntelligentModel {
   private async generateLLMResponse(
     messages: Array<{ role: string; content: string }>,
     model: string,
-    urgent: boolean
+    urgent: boolean,
+    allowedTools: string[]
   ): Promise<{ content: string; toolCalls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }> }> {
     const maxRetries = 3;
     const client = this.getClient();
 
-    // Define tools
-    const tools = [
+    // Define all possible tools
+    const allTools = [
       {
         type: 'function' as const,
         function: {
@@ -205,8 +207,28 @@ export class IntelligentModel {
             required: ['level']
           }
         }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'select_conversation',
+          description: 'Select a specific conversation to focus on for improvement or addition',
+          parameters: {
+            type: 'object',
+            properties: {
+              requestId: {
+                type: 'string',
+                description: 'The ID of the conversation to select for focused improvement'
+              }
+            },
+            required: ['requestId']
+          }
+        }
       }
     ];
+
+    // Filter tools based on allowed tools
+    const tools = allTools.filter(tool => allowedTools.includes(tool.function.name));
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {

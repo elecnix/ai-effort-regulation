@@ -22,6 +22,7 @@ export class SensitiveLoop {
   private thoughtManager: ThoughtManager;
   private isRunning = false;
   private debugMode = false;
+  private selectedConversationId: string | null = null;
 
   constructor(debugMode: boolean = false, replenishRate: number = 1) {
     this.debugMode = debugMode;
@@ -78,6 +79,8 @@ export class SensitiveLoop {
 
 When there are messages in your inbox, USE THE RESPOND TOOL immediately to answer them. Only consider energy management after all messages are handled.
 
+When reviewing previous conversations, you can also use the respond tool to add to, improve, or follow up on previous responses if you have additional valuable insights to share.
+
 Reflect on your current energy level, recent actions, and how you can best serve your user. Vary your thoughts to avoid repetition. Do not copy or repeat the content of any previous messages.
 
 When you have thoughts to share, respond with your thoughts directly. When you need to take an action, use the appropriate tool.
@@ -88,6 +91,12 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
 
   private async unifiedCognitiveAction() {
     try {
+      // If a conversation is selected for focused improvement, handle it
+      if (this.selectedConversationId) {
+        await this.handleSelectedConversation();
+        return;
+      }
+
       // Get all recent conversations, then filter to unanswered ones only
       const allConversations = this.inbox.getRecentConversations(10);
       const unansweredConversations = allConversations.filter(conv => conv.responseMessages.length === 0);
@@ -95,8 +104,26 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
       // Focus on the oldest unanswered conversation (highest priority)
       const targetConversation = unansweredConversations.length > 0 ? unansweredConversations[0] : null;
 
-      // If no unanswered conversations, we can still think and manage energy
-      const conversationsToInclude = targetConversation ? [targetConversation] : [];
+      let conversationsToInclude: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }> = [];
+      let instruction: string;
+
+      if (targetConversation) {
+        // Focus on one unanswered conversation
+        conversationsToInclude = [targetConversation];
+        instruction = `Focus on the conversation above and decide whether to respond using the respond tool or manage your energy using the await_energy tool.`;
+      } else {
+        // No unanswered conversations - review recent completed ones for potential improvements
+        const recentCompleted = this.inbox.getRecentCompletedConversations(5);
+        conversationsToInclude = recentCompleted.map(conv => ({
+          id: conv.requestId,
+          requestMessage: conv.inputMessage || '',
+          responseMessages: conv.responses.map(r => r.content),
+          timestamp: new Date() // Use current time for ordering
+        }));
+        instruction = conversationsToInclude.length > 0
+          ? `Review the recent conversations above. Use the select_conversation tool to choose one for focused improvement, or use await_energy to manage energy.`
+          : 'No recent conversations to review. You can think, reflect, or manage your energy as needed.';
+      }
 
       const messages = [
         this.getSystemMessage(targetConversation),
@@ -105,9 +132,7 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
         this.getEphemeralSystemMessage(conversationsToInclude, unansweredConversations.length),
         {
           role: 'user',
-          content: targetConversation
-            ? `Focus on the conversation above and decide whether to respond using the respond tool or manage your energy using the await_energy tool.`
-            : 'No pending conversations. You can think, reflect, or manage your energy as needed.'
+          content: instruction
         }
       ];
 
@@ -115,7 +140,17 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
         console.log(`${this.getEnergyIndicator()} DEBUG LLM full prompt:`, JSON.stringify(messages, null, 2));
       }
 
-      const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false);
+      // Determine which tools to allow based on context
+      let allowedTools: string[];
+      if (targetConversation) {
+        // Answering unanswered conversation
+        allowedTools = ['respond', 'await_energy'];
+      } else {
+        // Reviewing completed conversations for potential improvements
+        allowedTools = ['select_conversation', 'await_energy'];
+      }
+
+      const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, allowedTools);
 
       await this.executeLLMAutonomousDecision(modelResponse);
 
@@ -227,7 +262,7 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
         return;
       }
 
-      // Add response to inbox
+      // Add response to inbox - this handles both new responses and additions to existing conversations
       const userMessage = conversation.inputMessage;
       const energyLevel = this.energyRegulator.getEnergy();
       // Get current model from intelligent model
@@ -235,12 +270,66 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
 
       this.inbox.addResponse(requestId, userMessage, responseContent, energyLevel, modelUsed);
 
-      // Remove from pending messages since it's now answered
-      this.inbox.removeMessage(requestId);
+      // Only remove from pending messages if this was an unanswered conversation
+      // For completed conversations, we don't remove them from pending since they're already answered
+      const pendingMessages = this.inbox.getPendingMessages();
+      const isPending = pendingMessages.some(msg => msg.id === requestId);
+      if (isPending) {
+        this.inbox.removeMessage(requestId);
+      }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ Error responding to request ${requestId}:`, error);
     }
+  }
+
+  private async handleSelectedConversation() {
+    if (!this.selectedConversationId) return;
+
+    // Get the selected conversation
+    const conversation = this.inbox.getConversation(this.selectedConversationId);
+    if (!conversation) {
+      console.error(`❌ Selected conversation ${this.selectedConversationId} not found`);
+      this.selectedConversationId = null;
+      return;
+    }
+
+    const conversationsToInclude = [{
+      id: conversation.requestId,
+      requestMessage: conversation.inputMessage || '',
+      responseMessages: conversation.responses.map(r => r.content),
+      timestamp: new Date()
+    }];
+
+    const messages = [
+      this.getSystemMessage(null), // No target conversation since we're improving an existing one
+      ...this.getConversationMessages(conversationsToInclude),
+      ...this.getThoughts(),
+      this.getEphemeralSystemMessage(conversationsToInclude, 0), // 0 unanswered since we're reviewing completed
+      {
+        role: 'user',
+        content: `You have selected this conversation for focused improvement. Add to, improve, or follow up on the previous response using the respond tool, or use await_energy to manage your energy.`
+      }
+    ];
+
+    if (this.debugMode) {
+      console.log(`${this.getEnergyIndicator()} DEBUG LLM full prompt (selected conversation):`, JSON.stringify(messages, null, 2));
+    }
+
+    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy']);
+
+    // Clear the selection after handling
+    this.selectedConversationId = null;
+
+    await this.executeLLMAutonomousDecision(modelResponse);
+  }
+
+  private async selectConversation(requestId: string) {
+    console.log(`🎯 Selecting conversation ${requestId} for focused improvement`);
+    this.selectedConversationId = requestId;
+
+    // Immediately trigger another cognitive action focused on this conversation
+    await this.unifiedCognitiveAction();
   }
 
   private async executeToolCall(toolCall: { id: string; type: string; function: { name: string; arguments: string } }) {
@@ -257,6 +346,10 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
         const { level } = JSON.parse(args);
         console.log(`💤 Awaiting ${level}% energy`);
         await this.energyRegulator.awaitEnergyLevel(level);
+      } else if (name === 'select_conversation') {
+        const { requestId } = JSON.parse(args);
+        console.log(`🎯 Selecting conversation ${requestId} for improvement`);
+        await this.selectConversation(requestId);
       } else {
         console.error(`Unknown tool: ${name}`);
       }
