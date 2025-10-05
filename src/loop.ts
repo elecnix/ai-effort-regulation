@@ -88,16 +88,26 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
 
   private async unifiedCognitiveAction() {
     try {
-      const conversations = this.inbox.getRecentConversations(5);
+      // Get all recent conversations, then filter to unanswered ones only
+      const allConversations = this.inbox.getRecentConversations(10);
+      const unansweredConversations = allConversations.filter(conv => conv.responseMessages.length === 0);
+
+      // Focus on the oldest unanswered conversation (highest priority)
+      const targetConversation = unansweredConversations.length > 0 ? unansweredConversations[0] : null;
+
+      // If no unanswered conversations, we can still think and manage energy
+      const conversationsToInclude = targetConversation ? [targetConversation] : [];
 
       const messages = [
-        this.getSystemMessage(),
-        ...this.getConversationMessages(conversations),
+        this.getSystemMessage(targetConversation),
+        ...this.getConversationMessages(conversationsToInclude),
         ...this.getThoughts(),
-        this.getEphemeralSystemMessage(conversations),
+        this.getEphemeralSystemMessage(conversationsToInclude, unansweredConversations.length),
         {
           role: 'user',
-          content: 'Provide your thoughts and use tools as needed.'
+          content: targetConversation
+            ? `Focus on the conversation above and decide whether to respond using the respond tool or manage your energy using the await_energy tool.`
+            : 'No pending conversations. You can think, reflect, or manage your energy as needed.'
         }
       ];
 
@@ -114,8 +124,8 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
     }
   }
 
-  private getSystemMessage() {
-    let message = this.inbox.isEmpty() ? this.systemMessage : this.systemMessage + '\n\n' + this.systemInboxMessage;
+  private getSystemMessage(targetConversation: { id: string; requestMessage: string; responseMessages: string[]; timestamp: Date } | null | undefined) {
+    let message = !targetConversation ? this.systemMessage : this.systemMessage + '\n\n' + this.systemInboxMessage;
     return { role: 'system', content: message };
   }
 
@@ -147,23 +157,19 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
     return messages;
   }
 
-  private getEphemeralSystemMessage(conversations: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }>) {
+  private getEphemeralSystemMessage(conversationsToInclude: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }>, totalUnansweredCount: number) {
     let message = '(ephemeral)\n';
     const currentEnergy = this.energyRegulator.getEnergy();
     const energyStatus = this.energyRegulator.getStatus();
     const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
-    // Count only unanswered conversations (those with no responses)
-    const unansweredCount = conversations.filter(conv => conv.responseMessages.length === 0).length;
-    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${unansweredCount} conversations in your inbox.`;
-    if (!this.inbox.isEmpty()) {
-      message = `${message}\nTo respond to a conversation, use the respond tool: respond(conversationId, responseContent).\nTo await higher energy levels, use the await_energy tool: await_energy(targetLevel).`;
+    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${totalUnansweredCount} total unanswered conversations.`;
+    if (conversationsToInclude.length > 0) {
+      message = `${message}\nYou are currently focused on one conversation. Use the respond tool to answer it, or use await_energy to manage your energy.`;
     }
     if (currentEnergy < 20) {
       message = `${message}\nTo await a higher energy level, use the await_energy tool: await_energy(targetLevel).`;
     } else if (currentEnergy < 50) {
       message = `${message}\nTo await a higher energy level, use the await_energy tool: await_energy(targetLevel).`;
-    } else if (this.inbox.isEmpty()) {
-      message = `${message}\nYou are free to let your mind reflect on your recent conversations. You are encouraged to push additional responses to previous requests using the respond tool: respond(requestId, content).`;
     }
     return {
       role: 'user',

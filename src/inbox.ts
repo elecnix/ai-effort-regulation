@@ -32,14 +32,15 @@ const DB_PATH = path.join(process.cwd(), 'conversations.db');
 
 export class Inbox {
   private db: Database.Database;
-  private pendingMessages: Message[] = [];
-  private readonly MAX_PENDING = 50; // Limit pending messages to prevent memory issues
+  // Remove the confusing dual-storage - just use database queries
 
   // Prepared statements for better performance
   private getConversationStmt!: Database.Statement;
   private insertConversationStmt!: Database.Statement;
   private updateConversationStmt!: Database.Statement;
   private insertResponseStmt!: Database.Statement;
+  private getPendingStmt!: Database.Statement;
+  private getUnansweredCountStmt!: Database.Statement;
 
   constructor() {
     this.db = new Database(DB_PATH);
@@ -47,9 +48,7 @@ export class Inbox {
     this.prepareStatements();
   }
 
-  open() {
-    this.loadPendingMessages();
-  }
+  // Remove the old open method
 
   private initializeDatabase() {
     // Create tables
@@ -93,75 +92,82 @@ export class Inbox {
       INSERT INTO responses (conversation_id, content, energy_level, model_used)
       VALUES (?, ?, ?, ?)
     `);
-  }
-
-  private loadPendingMessages() {
-    try {
-      // Get conversations that have input messages but no responses
-      const stmt = this.db.prepare(`
-        SELECT c.request_id, c.input_message, c.created_at
+    // New statements for simplified inbox management
+    this.getPendingStmt = this.db.prepare(`
+      SELECT c.request_id as id, c.input_message as content, c.created_at as timestamp
+      FROM conversations c
+      LEFT JOIN responses r ON c.id = r.conversation_id
+      WHERE c.input_message IS NOT NULL AND c.input_message != ''
+      GROUP BY c.id, c.request_id, c.input_message, c.created_at
+      HAVING COUNT(r.id) = 0
+      ORDER BY c.created_at ASC
+    `);
+    this.getUnansweredCountStmt = this.db.prepare(`
+      SELECT COUNT(*) as count FROM (
+        SELECT c.id
         FROM conversations c
         LEFT JOIN responses r ON c.id = r.conversation_id
         WHERE c.input_message IS NOT NULL AND c.input_message != ''
-        GROUP BY c.id, c.request_id, c.input_message, c.created_at
+        GROUP BY c.id
         HAVING COUNT(r.id) = 0
-        ORDER BY c.created_at DESC
-        LIMIT ?
-      `);
-      const rows = stmt.all(this.MAX_PENDING) as { request_id: string; input_message: string; created_at: string }[];
-      this.pendingMessages = rows.map(row => ({
-        id: row.request_id,
-        content: row.input_message,
-        timestamp: new Date(row.created_at)
-      }));
-      console.log(`📬 Inbox loaded ${this.pendingMessages.length} pending messages`);
-    } catch (error) {
-      console.error('Error loading pending messages to inbox:', error);
-    }
+      )
+    `);
   }
+
+  open() {
+    // No longer need to load pending messages into memory
+    console.log(`📬 Inbox initialized`);
+  }
+
+  // Remove the confusing loadPendingMessages method
 
   // Add a new message to the inbox (called when a message is received)
   addMessage(message: Message) {
-    // Check if message already exists (avoid duplicates)
-    if (!this.pendingMessages.find(m => m.id === message.id)) {
-      this.pendingMessages.unshift(message); // Add to front for priority
-      // Keep only the most recent messages
-      if (this.pendingMessages.length > this.MAX_PENDING) {
-        this.pendingMessages = this.pendingMessages.slice(0, this.MAX_PENDING);
-      }
-      console.log(`📬 Added message ${message.id} to inbox`);
-    }
+    // Messages are stored directly in database by server.ts, no in-memory management needed
+    console.log(`📬 Message ${message.id} stored in database`);
   }
 
-  // Get pending message IDs (for the LLM prompt)
+  // Get pending message IDs (for the LLM prompt) - now queries database
   getPendingMessageIds(limit: number = 5): string[] {
-    return this.pendingMessages.slice(0, limit).map(msg => msg.id);
-  }
-
-  // Get all pending messages
-  getPendingMessages(): Message[] {
-    return [...this.pendingMessages];
-  }
-
-  // Remove a message from pending (called when it's answered)
-  removeMessage(messageId: string) {
-    const initialLength = this.pendingMessages.length;
-    this.pendingMessages = this.pendingMessages.filter(msg => msg.id !== messageId);
-    if (this.pendingMessages.length < initialLength) {
-      console.log(`📬 Removed message ${messageId} from inbox`);
-    } else {
-      console.log(`⚠️ Message ${messageId} not found in inbox`);
+    try {
+      const rows = this.getPendingStmt.all() as { id: string }[];
+      return rows.slice(0, limit).map(row => row.id);
+    } catch (error) {
+      console.error('Error getting pending message IDs:', error);
+      return [];
     }
   }
 
-  // Get recent messages (for context/history)
-  getRecentMessages(limit: number = 10): Message[] {
-    return this.pendingMessages.slice(0, limit);
+  // Get all pending messages - now queries database
+  getPendingMessages(): Message[] {
+    try {
+      const rows = this.getPendingStmt.all() as { id: string; content: string; timestamp: string }[];
+      return rows.map(row => ({
+        id: row.id,
+        content: row.content,
+        timestamp: new Date(row.timestamp)
+      }));
+    } catch (error) {
+      console.error('Error getting pending messages:', error);
+      return [];
+    }
   }
 
-  // Check if inbox is empty
+  // Remove a message from pending (called when it's answered) - now marks as answered in DB
+  removeMessage(messageId: string) {
+    // Since we use database queries, removal happens automatically when responses are added
+    console.log(`📬 Message ${messageId} marked as answered in database`);
+  }
+
+  // Get recent messages (for context/history) - now queries database
+  getRecentMessages(limit: number = 10): Message[] {
+    return this.getPendingMessages().slice(0, limit);
+  }
+
+  // Check if inbox is empty - now queries database
   isEmpty(): boolean {
-    return this.pendingMessages.length === 0;
+    const pending = this.getPendingMessages();
+    return pending.length === 0;
   }
 
   // Save a conversation response
