@@ -224,7 +224,24 @@ export class IntelligentModel {
             required: ['requestId']
           }
         }
-      }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'think',
+          description: 'Record a thought for internal reflection and reasoning. Use this to think through problems, analyze conversations, or reflect on your current state.',
+          parameters: {
+            type: 'object',
+            properties: {
+              thought: {
+                type: 'string',
+                description: 'Your internal thought or reflection'
+              }
+            },
+            required: ['thought']
+          }
+        }
+      },
     ];
 
     // Filter tools based on allowed tools

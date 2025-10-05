@@ -19,7 +19,8 @@ export class SensitiveLoop {
   private energyRegulator: EnergyRegulator;
   private intelligentModel: IntelligentModel;
   private inbox: Inbox;
-  private thoughtManager: ThoughtManager;
+  private reviewThoughtManager: ThoughtManager; // For conversation review thoughts (circular buffer)
+  private conversationThoughtManager: ThoughtManager; // For focused conversation thoughts (in-memory)
   private isRunning = false;
   private debugMode = false;
   private selectedConversationId: string | null = null;
@@ -29,7 +30,8 @@ export class SensitiveLoop {
     this.energyRegulator = new EnergyRegulator(replenishRate);
     this.intelligentModel = new IntelligentModel();
     this.inbox = new Inbox();
-    this.thoughtManager = new ThoughtManager();
+    this.reviewThoughtManager = new ThoughtManager();
+    this.conversationThoughtManager = new ThoughtManager();
   }
 
   async start(durationSeconds?: number) {
@@ -81,11 +83,11 @@ When there are messages in your inbox, USE THE RESPOND TOOL immediately to answe
 
 When reviewing previous conversations, you can also use the respond tool to add to, improve, or follow up on previous responses if you have additional valuable insights to share.
 
+Use the think tool to record your internal thoughts and reflections. This helps you reason through complex problems and maintain continuity in your thinking. Always provide meaningful, substantive thoughts - never use the think tool with empty content.
+
 Reflect on your current energy level, recent actions, and how you can best serve your user. Vary your thoughts to avoid repetition. Do not copy or repeat the content of any previous messages.
 
-When you have thoughts to share, respond with your thoughts directly. When you need to take an action, use the appropriate tool.
-
-Respond with your thoughts first, then use tools if needed. Do not combine thoughts and tool calls in the same response unless the tool is for responding to a message.`;
+When you have thoughts to share, use the think tool with meaningful content first, then use other tools if needed. Do not combine thoughts and tool calls in the same response unless the tool is for responding to a message.`;
 
   private readonly systemInboxMessage = `To respond to a pending message, use the respond tool with the appropriate message ID and your response content.`;
 
@@ -113,7 +115,12 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
         instruction = `Focus on the conversation above and decide whether to respond using the respond tool or manage your energy using the await_energy tool.`;
       } else {
         // No unanswered conversations - review recent completed ones for potential improvements
-        const recentCompleted = this.inbox.getRecentCompletedConversations(5);
+        // Adjust review count based on energy level: more energy = more conversations to review
+        const currentEnergyPercent = this.energyRegulator.getEnergyPercentage();
+        // Linear interpolation: 0% energy = 1 conversation, 100% energy = 20 conversations
+        const reviewCount = Math.max(1, Math.round(1 + (currentEnergyPercent / 100) * 19));
+
+        const recentCompleted = this.inbox.getRecentCompletedConversations(reviewCount);
         conversationsToInclude = recentCompleted.map(conv => ({
           id: conv.requestId,
           requestMessage: `${conv.inputMessage || ''} [Energy consumed: ${conv.metadata.totalEnergyConsumed.toFixed(1)} units, ${conv.responses.length} responses]`,
@@ -128,7 +135,7 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
       const messages = [
         this.getSystemMessage(targetConversation),
         ...this.getConversationMessages(conversationsToInclude),
-        ...this.getThoughts(),
+        ...this.getThoughts(false), // Not conversation-focused, so only review thoughts
         this.getEphemeralSystemMessage(conversationsToInclude, unansweredConversations.length),
         {
           role: 'user',
@@ -144,10 +151,10 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
       let allowedTools: string[];
       if (targetConversation) {
         // Answering unanswered conversation
-        allowedTools = ['respond', 'await_energy'];
+        allowedTools = ['respond', 'await_energy', 'think'];
       } else {
         // Reviewing completed conversations for potential improvements
-        allowedTools = ['select_conversation', 'await_energy'];
+        allowedTools = ['select_conversation', 'await_energy', 'think'];
       }
 
       const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, allowedTools);
@@ -164,15 +171,26 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
     return { role: 'system', content: message };
   }
 
-  private getThoughts(): Array<{ role: string; content: string }> {
-    // Add concatenated thoughts as assistant message if any exist
-    if (this.thoughtManager.hasThoughts()) {
-      return [{
+  private getThoughts(isConversationFocused: boolean = false): Array<{ role: string; content: string }> {
+    const thoughts: Array<{ role: string; content: string }> = [];
+
+    // Always include review thoughts for context
+    if (this.reviewThoughtManager.hasThoughts()) {
+      thoughts.push({
         role: 'assistant',
-        content: this.thoughtManager.getConcatenatedThoughts()
-      }];
+        content: this.reviewThoughtManager.getConcatenatedThoughts()
+      });
     }
-    return [];
+
+    // Include conversation thoughts only when focused on a conversation
+    if (isConversationFocused && this.conversationThoughtManager.hasThoughts()) {
+      thoughts.push({
+        role: 'assistant',
+        content: this.conversationThoughtManager.getConcatenatedThoughts()
+      });
+    }
+
+    return thoughts;
   }
 
   private getConversationMessages(conversations: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }>): Array<{ role: string; content: string }> {
@@ -227,7 +245,12 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
       const thoughts = modelResponse.content.trim();
       if (thoughts) {
         console.log(`${this.getEnergyIndicator()} 🤔 LLM thought: ${this.truncateText(thoughts)}`);
-        this.thoughtManager.addThought(thoughts);
+        // Add to appropriate thought manager based on context
+        if (this.selectedConversationId) {
+          this.conversationThoughtManager.addThought(thoughts);
+        } else {
+          this.reviewThoughtManager.addThought(thoughts);
+        }
       }
 
     } catch (error: any) {
@@ -259,6 +282,13 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
       const conversation = this.inbox.getConversation(requestId);
       if (!conversation) {
         console.error(`❌ No conversation found for ${requestId}`);
+        // Add a thought to inform the LLM about this error
+        const errorThought = `I tried to respond to conversation ${requestId}, but it doesn't exist. This might be an old or invalid conversation ID. I should check available conversations before responding.`;
+        if (this.selectedConversationId) {
+          this.conversationThoughtManager.addThought(errorThought);
+        } else {
+          this.reviewThoughtManager.addThought(errorThought);
+        }
         return;
       }
 
@@ -304,7 +334,7 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
     const messages = [
       this.getSystemMessage(null), // No target conversation since we're improving an existing one
       ...this.getConversationMessages(conversationsToInclude),
-      ...this.getThoughts(),
+      ...this.getThoughts(true), // Conversation-focused, so include conversation thoughts
       this.getEphemeralSystemMessage(conversationsToInclude, 0), // 0 unanswered since we're reviewing completed
       {
         role: 'user',
@@ -316,7 +346,7 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
       console.log(`${this.getEnergyIndicator()} DEBUG LLM full prompt (selected conversation):`, JSON.stringify(messages, null, 2));
     }
 
-    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy']);
+    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think']);
 
     // Clear the selection after handling
     this.selectedConversationId = null;
@@ -339,17 +369,46 @@ Respond with your thoughts first, then use tools if needed. Do not combine thoug
 
     try {
       if (name === 'respond') {
-        const { requestId, content } = JSON.parse(args);
-        console.log(`💬 Responding to ${requestId} with: ${content?.substring(0, 50)}...`);
-        await this.respondToRequest(requestId, content);
+        try {
+          const { requestId, content } = JSON.parse(args);
+          console.log(`💬 Responding to ${requestId} with: ${content?.substring(0, 50)}...`);
+          await this.respondToRequest(requestId, content);
+        } catch (parseError) {
+          console.log(`💬 Malformed respond tool call with args "${args}", ignoring`);
+        }
       } else if (name === 'await_energy') {
-        const { level } = JSON.parse(args);
-        console.log(`💤 Awaiting ${level}% energy`);
-        await this.energyRegulator.awaitEnergyLevel(level);
+        try {
+          const { level } = JSON.parse(args);
+          console.log(`💤 Awaiting ${level}% energy`);
+          await this.energyRegulator.awaitEnergyLevel(level);
+        } catch (parseError) {
+          console.log(`💤 Malformed await_energy tool call with args "${args}", ignoring`);
+        }
       } else if (name === 'select_conversation') {
-        const { requestId } = JSON.parse(args);
-        console.log(`🎯 Selecting conversation ${requestId} for improvement`);
-        await this.selectConversation(requestId);
+        try {
+          const { requestId } = JSON.parse(args);
+          console.log(`🎯 Selecting conversation ${requestId} for improvement`);
+          await this.selectConversation(requestId);
+        } catch (parseError) {
+          console.log(`🎯 Malformed select_conversation tool call with args "${args}", ignoring`);
+        }
+      } else if (name === 'think') {
+        try {
+          const { thought } = JSON.parse(args);
+          if (thought && thought.trim()) {
+            console.log(`🤔 Thinking: ${this.truncateText(thought)}`);
+            // Add to appropriate thought manager based on context
+            if (this.selectedConversationId) {
+              this.conversationThoughtManager.addThought(thought);
+            } else {
+              this.reviewThoughtManager.addThought(thought);
+            }
+          } else {
+            console.log(`🤔 Empty thought received, ignoring`);
+          }
+        } catch (parseError) {
+          console.log(`🤔 Malformed think tool call with args "${args}", ignoring`);
+        }
       } else {
         console.error(`Unknown tool: ${name}`);
       }

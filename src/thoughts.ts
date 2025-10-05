@@ -16,6 +16,10 @@ class ThoughtManager {
   hasThoughts(): boolean {
     return this.thoughts.length > 0;
   }
+
+  clearThoughts(): void {
+    this.thoughts = [];
+  }
 }
 
 export { ThoughtManager };
