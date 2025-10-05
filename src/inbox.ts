@@ -19,7 +19,6 @@ export interface ConversationData {
   metadata: {
     totalEnergyConsumed: number;
     sleepCycles: number;
-    modelSwitches: number;
   };
 }
 
@@ -62,8 +61,7 @@ export class Inbox {
         input_message TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         total_energy_consumed INTEGER DEFAULT 0,
-        sleep_cycles INTEGER DEFAULT 0,
-        model_switches INTEGER DEFAULT 0
+        sleep_cycles INTEGER DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS responses (
@@ -89,7 +87,7 @@ export class Inbox {
     `);
     this.updateConversationStmt = this.db.prepare(`
       UPDATE conversations
-      SET model_switches = ?
+      SET sleep_cycles = sleep_cycles + 1
       WHERE request_id = ?
     `);
     this.insertResponseStmt = this.db.prepare(`
@@ -176,7 +174,7 @@ export class Inbox {
   }
 
   // Save a conversation response
-  addResponse(requestId: string, userMessage: string, response: string, energyLevel: number, modelUsed: string, modelSwitches: number) {
+  addResponse(requestId: string, userMessage: string, response: string, energyLevel: number, modelUsed: string) {
     try {
       // Get or create conversation
       let conversation = this.getConversationStmt.get(requestId) as any;
@@ -199,7 +197,7 @@ export class Inbox {
       }
 
       // Update metadata
-      this.updateConversationStmt.run(modelSwitches, requestId);
+      this.updateConversationStmt.run(requestId);
 
       // Log only on errors, not successful saves
       // console.log(`💾 Saved response for ${requestId}`);
@@ -231,8 +229,7 @@ export class Inbox {
         })),
         metadata: {
           totalEnergyConsumed: conversation.total_energy_consumed,
-          sleepCycles: conversation.sleep_cycles,
-          modelSwitches: conversation.model_switches
+          sleepCycles: conversation.sleep_cycles
         }
       };
     } catch (error) {
