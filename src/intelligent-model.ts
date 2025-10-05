@@ -15,8 +15,9 @@ export interface ModelResponse {
 export class IntelligentModel {
   private currentModel: string;
   private readonly modelThresholds: Array<{ energyPerPrompt: number; model: string }> = [
-    { energyPerPrompt: 10, model: 'gemma:3b' },    // Low energy cost model
-    { energyPerPrompt: 25, model: 'llama2:7b' }  // High energy cost model
+    { energyPerPrompt: 5, model: 'qwen3:0.6b' }, // Low energy cost model
+    { energyPerPrompt: 50, model: 'qwen3:4b' }, // Medium energy cost model
+    { energyPerPrompt: 100, model: 'qwen3:8b' } // High energy cost model
   ];
 
   constructor() {

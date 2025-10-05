@@ -219,21 +219,25 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
       }
     }
 
-    // Add current energy level system message at the end with sleep instructions if needed
-    const currentEnergy = this.energyRegulator.getEnergy();
-    const energyStatus = this.energyRegulator.getStatus();
-    const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
-    let energyMessage = `Your energy level is ${msg}.`;
-    if (currentEnergy < 20) {
-      energyMessage = `Your energy level is low: ${msg}. To await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
-    } else if (currentEnergy < 50) {
-      energyMessage = `Your energy level is medium: ${msg}. To await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
-    }
+    let energyMessage = this.getEnergySystemMessage();
     messages.push({
       role: 'system',
       content: energyMessage
     });
     return messages;
+  }
+
+  private getEnergySystemMessage() {
+    const currentEnergy = this.energyRegulator.getEnergy();
+    const energyStatus = this.energyRegulator.getStatus();
+    const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
+    let energyMessage = `System date: ${new Date().toISOString()}\nYour energy level is ${msg}.`;
+    if (currentEnergy < 20) {
+      energyMessage = `${energyMessage}.\nTo await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
+    } else if (currentEnergy < 50) {
+      energyMessage = `${energyMessage}.\nTo await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
+    }
+    return energyMessage;
   }
 
   private async executeLLMAutonomousDecision(modelResponse: ModelResponse) {

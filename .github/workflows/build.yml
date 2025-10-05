@@ -34,7 +34,7 @@ jobs:
         fi
         
         # Check for essential output files
-        required_files=("dist/index.js" "dist/server.js" "dist/loop.js" "dist/energy.js" "dist/llm.js" "dist/tools.js")
+        required_files=("dist/index.js" "dist/server.js" "dist/loop.js" "dist/energy.js" "dist/intelligent-model.js" "dist/inbox.js" "dist/config.js")
         for file in "${required_files[@]}"; do
           if [ ! -f "$file" ]; then
             echo "❌ Build failed: $file not found"
