@@ -13,13 +13,12 @@ export interface ConversationData {
   responses: Array<{
     timestamp: string;
     content: string;
-    energyLevel: number;
     modelUsed: string;
   }>;
   metadata: {
     totalEnergyConsumed: number;
     sleepCycles: number;
-  };
+  }
 }
 
 export interface ConversationStats {
@@ -165,16 +164,6 @@ export class Inbox {
     return this.pendingMessages.length === 0;
   }
 
-  // Get inbox stats
-  getStats() {
-    const hasMessages = this.pendingMessages.length > 0;
-    return {
-      pendingCount: this.pendingMessages.length,
-      oldestMessage: hasMessages ? this.pendingMessages[this.pendingMessages.length - 1]!.timestamp : null,
-      newestMessage: hasMessages ? this.pendingMessages[0]!.timestamp : null
-    };
-  }
-
   // Save a conversation response
   addResponse(requestId: string, userMessage: string, response: string, energyLevel: number, modelUsed: string) {
     try {
@@ -240,41 +229,41 @@ export class Inbox {
     }
   }
 
-  // Get conversation statistics
-  getConversationStats(): ConversationStats | null {
-    try {
-      const statsStmt = this.db.prepare(`
-        SELECT
-          COUNT(DISTINCT c.id) as total_conversations,
-          COUNT(r.id) as total_responses,
-          AVG(r.energy_level) as avg_energy_level,
-          SUM(CASE WHEN r.energy_level < 0 THEN 1 ELSE 0 END) as urgent_responses
-        FROM conversations c
-        LEFT JOIN responses r ON c.id = r.conversation_id
-      `);
-
-      const result = statsStmt.get() as any;
-      return result || null;
-    } catch (error) {
-      console.error('Error getting conversation stats:', error);
-      return null;
-    }
-  }
-
-  // Get recent conversation IDs for reflection
-  getRecentConversationIds(limit: number = 10): string[] {
+  // Get recent conversations (for LLM context)
+  getRecentConversations(limit: number = 5): Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }> {
     try {
       const stmt = this.db.prepare(`
-        SELECT request_id
-        FROM conversations
-        ORDER BY created_at DESC
+        SELECT c.request_id, c.input_message, c.created_at
+        FROM conversations c
+        LEFT JOIN responses r ON c.id = r.conversation_id
+        GROUP BY c.id, c.request_id, c.input_message, c.created_at
+        ORDER BY c.created_at DESC
         LIMIT ?
       `);
 
-      const rows = stmt.all(limit) as { request_id: string }[];
-      return rows.map(row => row.request_id);
+      const rows = stmt.all(limit) as { request_id: string; input_message: string; created_at: string }[];
+      const conversations: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }> = [];
+
+      for (const row of rows) {
+        // Get responses for this conversation
+        const conversation = this.getConversationStmt.get(row.request_id) as any;
+        if (conversation) {
+          const responsesStmt = this.db.prepare('SELECT content FROM responses WHERE conversation_id = ? ORDER BY timestamp ASC');
+          const responseRows = responsesStmt.all(conversation.id) as { content: string }[];
+          const responseMessages = responseRows.map(r => r.content);
+
+          conversations.push({
+            id: row.request_id,
+            requestMessage: row.input_message || '',
+            responseMessages: responseMessages,
+            timestamp: new Date(row.created_at)
+          });
+        }
+      }
+
+      return conversations;
     } catch (error) {
-      console.error('Error getting recent conversation IDs:', error);
+      console.error('Error getting recent conversations:', error);
       return [];
     }
   }
@@ -304,6 +293,46 @@ export class Inbox {
     } catch (error) {
       console.error('Error getting recent completed conversations:', error);
       return [];
+    }
+  }
+
+  // Get conversation statistics (for /stats endpoint)
+  getConversationStats(): ConversationStats {
+    try {
+      // Total conversations
+      const totalConversationsStmt = this.db.prepare('SELECT COUNT(*) as count FROM conversations');
+      const totalConversationsResult = totalConversationsStmt.get() as { count: number } | undefined;
+      const totalConversations = totalConversationsResult?.count ?? 0;
+
+      // Total responses
+      const totalResponsesStmt = this.db.prepare('SELECT COUNT(*) as count FROM responses');
+      const totalResponsesResult = totalResponsesStmt.get() as { count: number } | undefined;
+      const totalResponses = totalResponsesResult?.count ?? 0;
+
+      // Average energy level
+      const avgEnergyStmt = this.db.prepare('SELECT AVG(energy_level) as avg FROM responses');
+      const avgEnergyResult = avgEnergyStmt.get() as { avg: number | null } | undefined;
+      const avgEnergy = avgEnergyResult?.avg ?? null;
+
+      // Urgent responses (energy level < 0)
+      const urgentResponsesStmt = this.db.prepare('SELECT COUNT(*) as count FROM responses WHERE energy_level < 0');
+      const urgentResponsesResult = urgentResponsesStmt.get() as { count: number | null } | undefined;
+      const urgentResponses = urgentResponsesResult?.count ?? null;
+
+      return {
+        total_conversations: totalConversations,
+        total_responses: totalResponses,
+        avg_energy_level: avgEnergy,
+        urgent_responses: urgentResponses
+      };
+    } catch (error) {
+      console.error('Error getting conversation stats:', error);
+      return {
+        total_conversations: 0,
+        total_responses: 0,
+        avg_energy_level: null,
+        urgent_responses: null
+      };
     }
   }
 }

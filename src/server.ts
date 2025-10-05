@@ -6,6 +6,14 @@ import { Inbox } from './inbox';
 import dotenv from 'dotenv';
 dotenv.config();
 
+// Extend global type for sensitiveLoop
+declare global {
+  var sensitiveLoop: {
+    inbox: Inbox;
+    [key: string]: any;
+  } | undefined;
+}
+
 const app = express();
 const PORT = parseInt(process.env.PORT || '3005');
 const MAX_MESSAGE_LENGTH = parseInt(process.env.MAX_MESSAGE_LENGTH || '10000');
@@ -82,17 +90,12 @@ app.post('/message', function(req: express.Request, res: express.Response): void
     messageQueue.push(message);
 
     // Save the user message to database immediately
-    const globalLoop = (global as any).sensitiveLoop;
+    const globalLoop = global.sensitiveLoop;
     if (globalLoop && globalLoop.inbox) {
-      globalLoop.inbox.addResponse(messageId, sanitizedContent, '', 0, '', 0);
+      globalLoop.inbox.addResponse(messageId, sanitizedContent, '', 0, '');
     }
 
-    // Add to inbox for tracking unanswered messages
-    if (globalLoop && globalLoop.inbox) {
-      globalLoop.inbox.addMessage(message);
-    }
-
-    console.log(`📨 Received: "${sanitizedContent.substring(0, 50)}${sanitizedContent.length > 50 ? '...' : ''}"`);
+    console.log(`📨 Received: "${sanitizedContent.substring(0, 200)}${sanitizedContent.length > 200 ? '...' : ''}"`);
 
     res.json({
       status: 'received',
@@ -110,6 +113,23 @@ app.post('/message', function(req: express.Request, res: express.Response): void
 });
 
 // New endpoints for conversation data
+app.get('/conversations', function(req: express.Request, res: express.Response): void {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10; // Default to 10 recent conversations
+    const globalLoop = global.sensitiveLoop;
+    const conversations = globalLoop && globalLoop.inbox ? globalLoop.inbox.getRecentConversations(limit) : [];
+
+    res.json({
+      conversations,
+      total: conversations.length
+    });
+  } catch (error) {
+    console.error('Error retrieving recent conversations:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
 app.get('/conversations/:requestId', function(req: express.Request, res: express.Response): void {
   try {
     const { requestId } = req.params;
@@ -117,7 +137,7 @@ app.get('/conversations/:requestId', function(req: express.Request, res: express
       res.status(400).json({ error: 'requestId parameter is required' });
       return;
     }
-    const globalLoop = (global as any).sensitiveLoop;
+    const globalLoop = global.sensitiveLoop;
     const conversation = globalLoop && globalLoop.inbox ? globalLoop.inbox.getConversation(requestId) : null;
 
     if (!conversation) {
@@ -131,32 +151,6 @@ app.get('/conversations/:requestId', function(req: express.Request, res: express
     res.status(500).json({ error: 'Internal server error' });
     return;
   }
-});
-
-app.get('/stats', (req, res) => {
-  try {
-    const globalLoop = (global as any).sensitiveLoop;
-    const stats = globalLoop && globalLoop.inbox ? globalLoop.inbox.getConversationStats() : null;
-    res.json(stats || { error: 'Could not retrieve statistics' });
-  } catch (error) {
-    console.error('Error retrieving stats:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Add endpoint to view internal thought metadata (not content)
-app.get('/internal-thoughts', (req, res) => {
-  // Get the sensitive loop instance to access internal thought metadata
-  const thoughts = (global as any).sensitiveLoop?.internalMonologue || [];
-  res.json({
-    thoughtCount: thoughts.length,
-    recentThoughts: thoughts.slice(-5).map((thought: any) => ({
-      timestamp: thought.timestamp,
-      energyLevel: thought.energyLevel,
-      // Note: actual thought content is not stored, only printed to console
-    })),
-    note: 'Internal thoughts are printed to console logs with 🤔 emoji, not stored in database'
-  });
 });
 
 app.get('/health', (req, res) => {

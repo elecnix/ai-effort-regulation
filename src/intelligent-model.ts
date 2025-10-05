@@ -15,11 +15,13 @@ export interface ModelResponse {
 
 export class IntelligentModel {
   private currentModel: string;
-  private readonly modelThresholds: Array<{ energyPerPrompt: number; model: string }> = [
-    { energyPerPrompt: 5, model: 'qwen3:0.6b' }, // Low energy cost model
-    { energyPerPrompt: 10, model: 'qwen3:4b' }, // Medium energy cost model
-    { energyPerPrompt: 20, model: 'qwen3:8b' } // High energy cost model
+  // Start with estimates of energy consumption
+  private readonly modelConsumption: Array<{ energyPerPrompt: number; model: string }> = [
+    { energyPerPrompt: 1, model: 'qwen3:0.6b' }, // Low energy cost model
+    { energyPerPrompt: 2, model: 'qwen3:4b' }, // Medium energy cost model
+    { energyPerPrompt: 5, model: 'qwen3:8b' } // High energy cost model
   ];
+  private requestStats: Map<string, {energy: number}[]> = new Map();
 
   constructor() {
     this.currentModel = this.getModelForEnergy(100); // Start with high energy assumption
@@ -48,24 +50,39 @@ export class IntelligentModel {
     const endTime = performance.now();
     const timeElapsedSeconds = (endTime - startTime) / 1000;
 
-    // Calculate energy consumption
-    const baseEnergyConsumed = this.getEnergyConsumption(this.currentModel);
-    const energyConsumed = baseEnergyConsumed - timeElapsedSeconds;
+    const actualEnergyConsumed = timeElapsedSeconds;
+    energyRegulator.consumeEnergy(actualEnergyConsumed);
 
-    energyRegulator.consumeEnergy(energyConsumed);
+    this.updateConsumption(this.currentModel, actualEnergyConsumed);
 
     return {
       content,
-      energyConsumed,
+      energyConsumed: actualEnergyConsumed,
       modelUsed: this.currentModel
     };
+  }
+
+  private updateConsumption(model: string, actualEnergyConsumed: number) {
+    const stats = this.requestStats.get(model) || [];
+    stats.push({ energy: actualEnergyConsumed });
+    if (stats.length > 5) stats.shift();
+    this.requestStats.set(model, stats);
+    const averageEnergyConsumed = stats.reduce((sum, s) => sum + s.energy, 0) / stats.length;
+    const modelConsumption = this.modelConsumption.find((consumption) => consumption.model === model)!;
+    modelConsumption.energyPerPrompt = averageEnergyConsumed;
   }
 
   /**
    * Get the estimated energy cost for the current model
    */
   getEstimatedEnergyCost(): number {
-    return this.getEnergyConsumption(this.currentModel);
+    const stats = this.requestStats.get(this.currentModel);
+    if (stats && stats.length > 0) {
+      const averageEnergy = stats.reduce((sum, s) => sum + s.energy, 0) / stats.length;
+      return averageEnergy;
+    } else {
+      return this.getEnergyConsumption(this.currentModel);
+    }
   }
 
   /**
@@ -73,20 +90,20 @@ export class IntelligentModel {
    */
   private getModelForEnergy(energy: number): string {
     // Find the most expensive model we can afford (highest energyPerPrompt that energy meets)
-    for (let i = this.modelThresholds.length - 1; i >= 0; i--) {
-      const threshold = this.modelThresholds[i];
+    for (let i = this.modelConsumption.length - 1; i >= 0; i--) {
+      const threshold = this.modelConsumption[i];
       if (threshold && energy >= threshold.energyPerPrompt) {
         return threshold.model;
       }
     }
     // Fallback to first model if no threshold matches
-    const firstThreshold = this.modelThresholds[0];
+    const firstThreshold = this.modelConsumption[0];
     return firstThreshold ? firstThreshold.model : 'gemma:3b';
   }
 
   private getEnergyConsumption(model: string): number {
     // Energy consumption based on energy per prompt for the model
-    const threshold = this.modelThresholds.find(t => t.model === model);
+    const threshold = this.modelConsumption.find(t => t.model === model);
     return threshold ? threshold.energyPerPrompt : 0;
   }
 

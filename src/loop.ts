@@ -60,10 +60,6 @@ export class SensitiveLoop {
           continue;
         }
 
-        for (const message of messageQueue.splice(0)) {
-          this.inbox.addMessage(message);
-        }
-
         await this.unifiedCognitiveAction();
 
       } catch (error) {
@@ -78,7 +74,7 @@ export class SensitiveLoop {
     console.log('Sensitive loop stopped');
   }
 
-  private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance. You are reading your internal monologue, but must respond to any pending messages.
+  private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance.
 
 To think, respond with <THOUGHTS>your thoughts here</THOUGHTS>.
 
@@ -95,19 +91,18 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
 <RESPONSE id="message-id">Your response here</RESPONSE>`;
 
   private async unifiedCognitiveAction() {
-    let systemMessage = this.inbox.isEmpty() ? this.systemMessage : this.systemMessage + '\n\n' + this.systemInboxMessage;
     try {
-      const recentConversations = this.inbox.getRecentCompletedConversations(5);
-      if (recentConversations.length > 0) {
-        const historyContents = recentConversations.map(conv =>
-          `<REQUEST id="${conv.requestId}">${conv.inputMessage}</REQUEST>\n<RESPONSE id="${conv.requestId}">${conv.responses.map(r => r.content).join('\n')}</RESPONSE>\n`
-        ).join('\n\n');
-        systemMessage = `${systemMessage}.\n\nRecent conversations:\n${historyContents}`;
-      }
+      const conversations = this.inbox.getRecentConversations(5);
 
       const messages = [
-        { role: 'system', content: systemMessage },
-        ...this.buildUnifiedContext()
+        this.getSystemMessage(),
+        ...this.getConversationMessages(conversations),
+        ...this.getThoughts(),
+        this.getEphemeralSystemMessage(conversations),
+        {
+          role: 'user',
+          content: 'Provide a response in the <RESPONSE> tag.'
+        }
       ];
 
       if (this.debugMode) {
@@ -123,55 +118,59 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
     }
   }
 
-  private buildUnifiedContext(): Array<{ role: string; content: string }> {
-    const messages: Array<{ role: string; content: string }> = [];
+  private getSystemMessage() {
+    let message = this.inbox.isEmpty() ? this.systemMessage : this.systemMessage + '\n\n' + this.systemInboxMessage;
+    return { role: 'system', content: message };
+  }
 
-    const pendingMessages = this.inbox.getPendingMessages();
+  private getThoughts(): Array<{ role: string; content: string }> {
     // Add concatenated thoughts as assistant message if any exist
     if (this.thoughtManager.hasThoughts()) {
-      messages.push({
+      return [{
         role: 'assistant',
         content: this.thoughtManager.getConcatenatedThoughts()
-      });
+      }];
     }
+    return [];
+  }
 
-    for (const pendingMessage of pendingMessages) {
-      const conversation = this.inbox.getConversation(pendingMessage.id);
-      if (conversation) {
-        // Add user message with request ID
+  private getConversationMessages(conversations: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }>): Array<{ role: string; content: string }> {
+    const messages: Array<{ role: string; content: string }> = [];
+    for (const conversation of conversations) {
+      messages.push({
+        role: 'user',
+        content: `<REQUEST id="${conversation.id}">${conversation.requestMessage}</REQUEST>`
+      });
+      if (conversation.responseMessages.length > 0) {
         messages.push({
-          role: 'user',
-          content: `<REQUEST id="${conversation.requestId}">${conversation.inputMessage}</REQUEST>`
+          role: 'assistant',
+          content: conversation.responseMessages.map((response) => `<RESPONSE id="${conversation.id}">${response}</RESPONSE>`).join('\n')
         });
       }
     }
-
-    let energyMessage = this.getEphemeralSystemMessage();
-    messages.push({
-      role: 'system',
-      content: energyMessage
-    });
-
     return messages;
   }
 
-  private getEphemeralSystemMessage() {
+  private getEphemeralSystemMessage(conversations: Array<{ id: string; requestMessage: string; responseMessages: string[]; timestamp: Date }>) {
     let message = '(ephemeral)\n';
     const currentEnergy = this.energyRegulator.getEnergy();
     const energyStatus = this.energyRegulator.getStatus();
     const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
-    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${this.inbox.getPendingMessageIds().length} messages in your inbox.`;
+    message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${conversations.length} conversations in your inbox.`;
     if (!this.inbox.isEmpty()) {
-      message = `${message}\nTo respond to a message, use this exact XML format: <RESPONSE id="message-id">Your response here</RESPONSE>.`;
+      message = `${message}\nTo respond to a conversation, use this exact XML format: <RESPONSE id="conversation-id">Your response here</RESPONSE>.`;
     }
     if (currentEnergy < 20) {
       message = `${message}\nTo await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
     } else if (currentEnergy < 50) {
       message = `${message}\nTo await a higher energy level, use this exact XML format: <AWAIT_ENERGY level="100"/>.`;
     } else if (this.inbox.isEmpty()) {
-      message = `${message}\nYou are free to let your mind wander. You may also add a new response to previous requests: <RESPONSE id="message-id">Your response here</RESPONSE>`;
+      message = `${message}\nYou are free to let your mind reflect on your recent conversations. You are encouraged to push additional responses to previous requests: <RESPONSE id="conversation-id">Your response here</RESPONSE>`;
     }
-    return message;
+    return {
+      role: 'user',
+      content: message
+    };
   }
 
   private async executeLLMAutonomousDecision(modelResponse: ModelResponse) {
@@ -240,9 +239,6 @@ Respond exactly as instructed above. No extra text, formatting, or deviations.`;
       const modelUsed = modelResponse.modelUsed;
 
       this.inbox.addResponse(requestId, userMessage, responseContent, energyLevel, modelUsed);
-
-      // Mark as done so next loop iteration doesn't see this message
-      this.inbox.removeMessage(requestId);
 
     } catch (error) {
       console.error(`❌ Error responding to request ${requestId}:`, error);
