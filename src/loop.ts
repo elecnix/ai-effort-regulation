@@ -76,17 +76,23 @@ export class SensitiveLoop {
 
   private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance. Every action you take consumes energy. You have access to tools to perform actions.
 
-When there are conversations in your inbox, USE THE RESPOND TOOL immediately to answer them. Conversation IDs consist of UUIDs; If you don't see a UUID, it doesn't exist.
+IMPORTANT: When using tools, you must call them properly through the tool calling interface. The system will provide you with conversation IDs in the format: "Conversation XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX: message content"
 
-When reviewing previous conversations, you can also use the respond tool to add to previous responses if you have additional valuable insights to share.
+When you see a conversation, extract ONLY the UUID part (the XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX) to use as the requestId in your tool calls.
 
-Use the think tool to record your internal thoughts and reflections when the next action is not clear. If you decide to use the think tool, provide meaningful, substantive thoughts. Thinking costs energy.
+Key rules:
+1. When there are conversations in your inbox, USE THE RESPOND TOOL immediately to answer them
+2. Extract the UUID from "Conversation UUID: content" format
+3. Use the think tool only for internal reflection when the next action is unclear
+4. Use end_conversation when a conversation is complete
+5. Use snooze_conversation to delay handling a conversation
+6. Use await_energy to wait for energy recovery
 
-Do not combine thoughts and tool calls in the same response unless the tools are for responding to conversation or snoozing.
-
-Use the end_conversation tool when you feel a conversation is over. Keep conversations open until the initial intent is completed or the user clearly states the conversation is over. The energy cost of the conversation is shown in the metadata of the conversation. Focusing on a conversation costs extra energy.
-
-Use the snooze_conversation tool to snooze a conversation for a specified number of minutes. You will conserve energy until the snooze period expires. Simultaneously, respond at the same time as snoozing to let the user know you are handling their request. When the user responds, the conversation will be reactivated. Use this when you need to set a reminder for later. When you see a conversation marked with [Previously snoozed until: ...], it means the snooze period has expired and you should now perform the requested action rather than snoozing again.`;
+Your energy affects your responses:
+- High energy (>50%): Normal, detailed responses
+- Medium energy (20-50%): Concise responses, consider resting
+- Low energy (<20%): Brief responses, prioritize rest
+- Urgent (<0%): Minimal responses, must rest immediately`;
 
   private readonly systemInboxMessage = `To respond to a pending conversation, use the respond tool with the appropriate conversation ID and your response content.`;
 
@@ -112,7 +118,7 @@ Use the snooze_conversation tool to snooze a conversation for a specified number
       if (targetConversation) {
         // Focus on one unanswered conversation
         conversationsToInclude = [targetConversation];
-        instruction = `Focus on the conversation above and decide whether to respond, think, snooze_conversation, end_conversation, or await_energy.`;
+        instruction = `You have an UNANSWERED conversation above. You MUST use the respond tool to answer it. The conversation ID is: ${targetConversation.id}. Extract this UUID and use it as the requestId parameter in the respond tool.`;
       } else {
         // No unanswered conversations - review recent completed ones for potential improvements
         // Adjust review count based on energy level: more energy = more conversations to review
@@ -461,10 +467,17 @@ Use the snooze_conversation tool to snooze a conversation for a specified number
     if (typeof rawId !== 'string') throw new Error(`Invalid conversation ID format: "${rawId}", ignoring`);
 
     // Extract UUID pattern from the input
+    // This matches standard UUID format (8-4-4-4-12 hex characters)
     const uuidMatch = rawId.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i);
     if (!uuidMatch) {
+      console.warn(`⚠️ Could not extract UUID from: "${rawId}"`);
       throw new Error(`Invalid conversation ID format: "${rawId}", ignoring`);
     }
-    return uuidMatch[0];
+    
+    const extractedId = uuidMatch[0];
+    if (this.debugMode) {
+      console.log(`📝 Extracted UUID: ${extractedId} from "${rawId}"`);
+    }
+    return extractedId;
   }
 }

@@ -1,0 +1,30 @@
+{
+  "models": ["llama3.2:1b", "llama3.2:3b"],
+  "defaultModel": "llama3.2:1b",
+  "serverUrl": "http://localhost:3005",
+  "energyTargets": {
+    "convergence": 25,
+    "tolerance": 25,
+    "minAcceptable": 5,
+    "maxAcceptable": 100
+  },
+  "timeouts": {
+    "conversation": 1800,
+    "snooze": 300,
+    "response": 30,
+    "energyCheck": 5
+  },
+  "testSettings": {
+    "maxIterations": 100,
+    "energySampleInterval": 10,
+    "verbose": false,
+    "saveReports": true,
+    "reportDir": "./test-reports",
+    "acceleratedReplenishRate": 1000
+  },
+  "snoozeSettings": {
+    "initialBackoff": 30,
+    "maxBackoff": 600,
+    "backoffMultiplier": 2
+  }
+}

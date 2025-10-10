@@ -21,9 +21,9 @@ export class IntelligentModel {
   private currentModel: string;
   // Start with estimates of energy consumption
   private readonly modelConsumption: Array<{ energyPerPrompt: number; model: string }> = [
-    { energyPerPrompt: 1, model: 'qwen3:0.6b' }, // Low energy cost model
-    { energyPerPrompt: 2, model: 'qwen3:4b' }, // Medium energy cost model
-    { energyPerPrompt: 5, model: 'qwen3:8b' } // High energy cost model
+    { energyPerPrompt: 1, model: 'llama3.2:1b' }, // Low energy cost model (supports tools)
+    { energyPerPrompt: 3, model: 'llama3.2:3b' }, // Medium energy cost model (supports tools)
+    { energyPerPrompt: 5, model: 'llama3.2:3b' } // High energy cost model (same model but more complex tasks)
   ];
   private requestStats: Map<string, {energy: number}[]> = new Map();
 
@@ -146,7 +146,7 @@ export class IntelligentModel {
     }
     // Fallback to first model if no threshold matches
     const firstThreshold = this.modelConsumption[0];
-    return firstThreshold ? firstThreshold.model : 'gemma:3b';
+    return firstThreshold ? firstThreshold.model : 'llama3.2:1b';
   }
 
   private getEnergyConsumption(model: string): number {
@@ -333,7 +333,7 @@ export class IntelligentModel {
             max_tokens: maxTokens,
             temperature: temperature,
             tools: tools,
-            tool_choice: 'required'
+            tool_choice: 'auto'  // Changed from 'required' to 'auto' for better compatibility
           });
 
           if (this.debugMode) {

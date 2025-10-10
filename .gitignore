@@ -19,8 +19,13 @@ build/
 # Generated data
 conversations/
 conversations.db
+conversations.db.backup
 logs/
 *.log
+
+# Test reports
+test-reports/
+test-tool-call.js
 
 # Runtime data
 pids

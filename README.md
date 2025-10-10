@@ -13,6 +13,17 @@ This project implements an AI system that regulates its own cognitive effort exp
 - **Reflects Continuously**: Periodically analyzes past conversations to generate deeper insights
 - **Learns from History**: Accesses all previous interactions to provide follow-up analysis
 
+### Energy as Effort Quota
+
+The energy level represents the AI's "effort quota" - a finite resource that must be managed wisely:
+
+- **Primary Goal**: Maintain operational energy (>0%) to handle work and respond to inputs
+- **Avoid Deadlock**: Energy should NOT get stuck at 0% - this prevents the system from working
+- **Work Focus**: The goal is to GET WORK DONE, not to maintain high energy levels
+- **Sustainable Operation**: Any average energy above 0% is acceptable as long as work continues
+- **Smart Recovery**: Use await_energy proactively before hitting 0% to prevent deadlock
+- **Responsive System**: Must maintain enough energy to handle conversations and unsnooze events
+
 ## 🏗️ Architecture
 
 ```
@@ -22,7 +33,7 @@ Sensitive Loop
 ├── Energy Regulator (Leaky Bucket: 100 max, -50 min)
 ├── Decision Engine (4 energy ranges with behaviors)
 ├── Reflection System (30s intervals, analyzes past convos)
-├── Model Switcher (gemma:3b ↔ gemma:7b based on energy)
+├── Model Switcher (llama3.2:1b ↔ llama3.2:3b based on energy)
 ├── LLM Integration (Ollama + OpenAI client)
 └── SQLite Database (conversation persistence)
 ```
@@ -32,7 +43,7 @@ Sensitive Loop
 ### Prerequisites
 - **Node.js** 18+
 - **Ollama** running locally
-- **Gemma models**: `ollama pull gemma:2b` and `ollama pull gemma:7b`
+- **Llama models**: `ollama pull llama3.2:1b` and `ollama pull llama3.2:3b`
 
 ### Installation
 ```bash
@@ -68,33 +79,104 @@ npm run debug -- --duration=60
 
 ## 🧪 Testing
 
-### Send Messages
+### Manual Testing
+
+#### Send Messages
 ```bash
 curl -X POST http://localhost:3002/message \
   -H "Content-Type: application/json" \
   -d '{"content": "What is quantum computing?"}'
 ```
 
-### Check System Stats
+#### Check System Stats
 ```bash
 curl http://localhost:3002/stats
 ```
 
-### Retrieve Conversations
+#### Retrieve Conversations
 ```bash
 curl http://localhost:3002/conversations/{requestId}
 ```
 
-### Health Check
+#### Health Check
 ```bash
 curl http://localhost:3002/health
 ```
 
-### Demo Script
+#### Demo Script
 ```bash
 chmod +x demo.sh
 ./demo.sh
 ```
+
+### Automated Testing Framework
+
+The automated testing framework validates the AI's energy regulation behavior and conversation management patterns. Tests run with local Ollama models (including very small models like gemma:2b) to ensure the system converges to stable energy patterns.
+
+#### Test Scenarios
+
+1. **Simple Conversations** - Validates basic interaction patterns
+   - User says "Hello, how are you?"
+   - AI responds appropriately
+   - System maintains conversation until natural conclusion
+   - Energy converges to stable levels (not constantly at 0%)
+   - Conversation snoozes with exponential backoff if user doesn't respond
+
+2. **Long-Running Conversations** - Tests sustained engagement
+   - User requests brainstorming (e.g., "Let's brainstorm baby names")
+   - AI provides multiple responses over time
+   - System recognizes one-sided conversations
+   - Eventually snoozes or terminates when user engagement drops
+
+3. **Future Actions** - Tests snooze functionality
+   - User requests future action (e.g., "Increase thermostat in 5 minutes")
+   - AI acknowledges and snoozes conversation
+   - Conversation reactivates at the right time
+   - Action is attempted when timer expires
+
+4. **Multiple Priorities** - Tests conversation balancing
+   - Multiple requests sent in quick succession
+   - System prioritizes based on urgency
+   - Energy is distributed appropriately across tasks
+
+#### Running Tests
+
+**Important**: Tests run with accelerated energy replenishment (1000x) to eliminate waiting time. Start the server with:
+```bash
+npm start -- --replenish-rate 1000
+```
+
+Then run tests in another terminal:
+```bash
+npm test                    # Run all tests
+npm run test:simple        # Test simple conversations
+npm run test:brainstorm    # Test long-running conversations  
+npm run test:snooze        # Test future actions
+npm run test:priorities    # Test multiple priorities
+```
+
+#### Test Configuration
+Tests use local Ollama models configured in `test/config.json`:
+```json
+{
+  "models": ["llama3.2:1b", "llama3.2:3b"],
+  "energyTargets": {
+    "convergence": 50,      // Target energy level for stability
+    "tolerance": 20         // Acceptable variance
+  },
+  "timeouts": {
+    "conversation": 1800,   // 30 minutes max conversation
+    "snooze": 300          // 5 minute snooze test
+  }
+}
+```
+
+#### Success Criteria
+
+- **Energy Convergence**: System maintains average energy near target levels (50-100%)
+- **Appropriate Timing**: Actions occur at expected times
+- **Conversation Management**: Proper handling of active, snoozed, and ended states
+- **Resource Efficiency**: Energy quota used mindfully, not depleted unnecessarily
 
 ## 📊 Energy Regulation Behavior
 
