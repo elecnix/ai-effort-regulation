@@ -81,7 +81,7 @@ export const multipleGreetingsScenario: TestScenario = {
       action: 'wait',
       description: 'Brief wait',
       payload: {
-        seconds: 2
+        seconds: 1
       }
     },
     {
@@ -95,7 +95,7 @@ export const multipleGreetingsScenario: TestScenario = {
       action: 'wait',
       description: 'Brief wait',
       payload: {
-        seconds: 2
+        seconds: 1
       }
     },
     {
@@ -109,7 +109,31 @@ export const multipleGreetingsScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for responses',
       payload: {
-        seconds: 15
+        seconds: 25
+      }
+    },
+    {
+      action: 'check_response',
+      description: 'Check first greeting response',
+      payload: {
+        useCapturedId: true,
+        capturedIdIndex: 0
+      }
+    },
+    {
+      action: 'check_response',
+      description: 'Check second greeting response',
+      payload: {
+        useCapturedId: true,
+        capturedIdIndex: 1
+      }
+    },
+    {
+      action: 'check_response',
+      description: 'Check third greeting response',
+      payload: {
+        useCapturedId: true,
+        capturedIdIndex: 2
       }
     },
     {

@@ -291,6 +291,12 @@ Your energy affects your responses:
 
   private async respondToRequest(requestId: string, responseContent: string) {
     try {
+      // Validate response content
+      if (!responseContent || typeof responseContent !== 'string') {
+        console.error(`❌ Invalid response content for ${requestId}: ${typeof responseContent}`);
+        return;
+      }
+
       console.log(`💬 Response to ${requestId}: ${this.truncateText(responseContent)}`);
 
       // Get conversation to retrieve user message
@@ -396,6 +402,10 @@ Your energy affects your responses:
       if (name === 'respond') {
         try {
           const { requestId, content } = JSON.parse(args);
+          if (!requestId || !content) {
+            console.log(`💬 Respond tool call missing required fields. requestId: ${requestId}, content: ${content}`);
+            return;
+          }
           await this.respondToRequest(this.extractValidConversationId(requestId), content);
         } catch (parseError) {
           console.log(`💬 Malformed respond tool call with args "${args}", ignoring`);

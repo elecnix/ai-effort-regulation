@@ -108,9 +108,17 @@ export class TestRunner {
           break;
 
         case 'check_response':
-          const checkId = step.payload.useCapturedId ? 
-            capturedRequestIds[capturedRequestIds.length - 1] : 
-            step.payload.requestId;
+          let checkId: string;
+          if (step.payload.useCapturedId) {
+            const index = step.payload.capturedIdIndex ?? capturedRequestIds.length - 1;
+            const capturedId = capturedRequestIds[index];
+            if (!capturedId) {
+              throw new Error(`No captured request ID at index ${index}`);
+            }
+            checkId = capturedId;
+          } else {
+            checkId = step.payload.requestId;
+          }
           await this.checkResponse(checkId, result);
           break;
 
