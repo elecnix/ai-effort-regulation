@@ -100,7 +100,7 @@ export const abandonedBrainstormingScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for initial response',
       payload: {
-        seconds: 20
+        seconds: 25
       }
     },
     {

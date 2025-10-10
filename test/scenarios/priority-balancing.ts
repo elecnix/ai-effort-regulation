@@ -165,7 +165,15 @@ export const energyExhaustionScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for responses',
       payload: {
-        seconds: 30
+        seconds: 35
+      }
+    },
+    {
+      action: 'check_response',
+      description: 'Check first request response',
+      payload: {
+        useCapturedId: true,
+        capturedIdIndex: 0
       }
     },
     {
