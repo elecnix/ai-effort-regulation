@@ -135,25 +135,34 @@ The automated testing framework validates the AI's energy regulation behavior an
    - Action is attempted when timer expires
 
 4. **Multiple Priorities** - Tests conversation balancing
-   - Multiple requests sent in quick succession
    - System prioritizes based on urgency
    - Energy is distributed appropriately across tasks
 
 #### Running Tests
 
-**Important**: Tests run with accelerated energy replenishment (1000x) to eliminate waiting time. Start the server with:
+**Automated (Recommended)**:
 ```bash
-npm start -- --replenish-rate 1000
+./test/run-with-server.sh simple      # Run simple tests with auto-managed server
+./test/run-with-server.sh all         # Run all tests
 ```
 
-Then run tests in another terminal:
-```bash
-npm test                    # Run all tests
-npm run test:simple        # Test simple conversations
-npm run test:brainstorm    # Test long-running conversations  
-npm run test:snooze        # Test future actions
-npm run test:priorities    # Test multiple priorities
-```
+**Manual** (if you prefer to manage the server yourself):
+1. Start server in one terminal:
+   ```bash
+   # Use duration from test output (test runner shows recommended duration)
+   node dist/src/index.js --replenish-rate 10 --duration 180
+   ```
+
+2. Run tests in another terminal:
+   ```bash
+   npm test                    # Run all tests
+   npm run test:simple        # Test simple conversations
+   npm run test:brainstorm    # Test long-running conversations  
+   npm run test:snooze        # Test future actions
+   npm run test:priorities    # Test multiple priorities
+   ```
+
+**Note**: Tests run with accelerated energy replenishment (`--replenish-rate 10`) for faster execution.
 
 #### Test Configuration
 Tests use local Ollama models configured in `test/config.json`:
