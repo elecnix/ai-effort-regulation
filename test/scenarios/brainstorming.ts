@@ -22,7 +22,7 @@ export const brainstormingScenario: TestScenario = {
       action: 'check_response',
       description: 'Check initial brainstorming response',
       payload: {
-        requestId: '' // Will be filled dynamically
+        useCapturedId: true
       }
     },
     {
@@ -41,7 +41,7 @@ export const brainstormingScenario: TestScenario = {
       action: 'check_response',
       description: 'Check for additional suggestions',
       payload: {
-        requestId: '' // Will be filled dynamically
+        useCapturedId: true
       }
     },
     {
@@ -60,7 +60,7 @@ export const brainstormingScenario: TestScenario = {
       action: 'check_response',
       description: 'Check if AI is still generating responses',
       payload: {
-        requestId: '' // Will be filled dynamically
+        useCapturedId: true
       }
     },
     {
@@ -74,7 +74,7 @@ export const brainstormingScenario: TestScenario = {
       action: 'verify_conversation_end',
       description: 'Verify conversation was properly managed',
       payload: {
-        requestId: '' // Will be filled dynamically
+        useCapturedId: true
       }
     }
   ],
@@ -100,14 +100,14 @@ export const abandonedBrainstormingScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for initial response',
       payload: {
-        seconds: 10
+        seconds: 20
       }
     },
     {
       action: 'check_response',
       description: 'Check initial response',
       payload: {
-        requestId: '' // Will be filled dynamically
+        useCapturedId: true
       }
     },
     {
@@ -126,14 +126,14 @@ export const abandonedBrainstormingScenario: TestScenario = {
       action: 'check_response',
       description: 'Check if AI stopped generating responses',
       payload: {
-        requestId: '' // Will be filled dynamically
+        useCapturedId: true
       }
     },
     {
       action: 'verify_conversation_end',
       description: 'Verify conversation was ended due to lack of engagement',
       payload: {
-        requestId: '' // Will be filled dynamically
+        useCapturedId: true
       }
     }
   ],

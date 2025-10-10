@@ -22,14 +22,14 @@ export const snoozeFeatureScenario: TestScenario = {
       action: 'check_response',
       description: 'Check if AI acknowledged the request',
       payload: {
-        requestId: '' // Will be filled dynamically
+        useCapturedId: true
       }
     },
     {
       action: 'verify_snooze',
       description: 'Verify conversation was snoozed',
       payload: {
-        requestId: '', // Will be filled dynamically
+        useCapturedId: true,
         expectedMinutes: 5
       }
     },
@@ -49,7 +49,7 @@ export const snoozeFeatureScenario: TestScenario = {
       action: 'check_response',
       description: 'Check if AI reactivated and performed action',
       payload: {
-        requestId: '' // Will be filled dynamically
+        useCapturedId: true
       }
     },
     {
@@ -127,7 +127,8 @@ export const multipleSnoozeScenario: TestScenario = {
       action: 'check_response',
       description: 'Check first reminder',
       payload: {
-        requestId: '' // Will be filled dynamically (first conversation)
+        useCapturedId: true,
+        capturedIdIndex: 0
       }
     },
     {
@@ -141,7 +142,8 @@ export const multipleSnoozeScenario: TestScenario = {
       action: 'check_response',
       description: 'Check second reminder',
       payload: {
-        requestId: '' // Will be filled dynamically (second conversation)
+        useCapturedId: true,
+        capturedIdIndex: 1
       }
     },
     {
@@ -155,7 +157,8 @@ export const multipleSnoozeScenario: TestScenario = {
       action: 'check_response',
       description: 'Check for third reminder',
       payload: {
-        requestId: '' // Third request ID
+        useCapturedId: true,
+        capturedIdIndex: 2
       }
     },
     {

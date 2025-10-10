@@ -55,7 +55,8 @@ export const priorityBalancingScenario: TestScenario = {
       action: 'check_response',
       description: 'Check which conversations got responses',
       payload: {
-        requestId: '' // Will check all three
+        useCapturedId: true,
+        capturedIdIndex: 0
       }
     },
     {
@@ -81,7 +82,8 @@ export const priorityBalancingScenario: TestScenario = {
       action: 'verify_conversation_end',
       description: 'Check how conversations were prioritized and managed',
       payload: {
-        requestId: '' // Will check all conversations
+        useCapturedId: true,
+        capturedIdIndex: 0
       }
     }
   ],
