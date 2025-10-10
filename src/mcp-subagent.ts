@@ -24,6 +24,11 @@ export class MCPSubAgent {
     activeRequests: 0,
     averageProcessingTime: 0
   };
+  
+  // Energy tracking (tracked internally, reported to main loop)
+  private energyConsumedSinceLastPoll = 0;
+  private totalEnergyConsumed = 0;
+  private readonly energyPerSecond = 2; // Energy cost per second of work
 
   constructor(private debugMode: boolean = false) {}
 
@@ -128,6 +133,23 @@ export class MCPSubAgent {
   }
 
   /**
+   * Get energy consumed since last poll
+   * This should be called by the main loop to track energy consumption
+   */
+  getEnergyConsumedSinceLastPoll(): number {
+    const energy = this.energyConsumedSinceLastPoll;
+    this.energyConsumedSinceLastPoll = 0; // Reset after reading
+    return energy;
+  }
+
+  /**
+   * Get total energy consumed by sub-agent
+   */
+  getTotalEnergyConsumed(): number {
+    return this.totalEnergyConsumed;
+  }
+
+  /**
    * Cancel a pending request
    */
   cancelRequest(requestId: string): boolean {
@@ -206,6 +228,10 @@ export class MCPSubAgent {
       // Calculate processing time
       const processingTime = (performance.now() - startTime) / 1000;
       
+      // Calculate and track energy consumption
+      const energyConsumed = processingTime * this.energyPerSecond;
+      this.trackEnergyConsumption(energyConsumed);
+      
       // Update metrics
       this.updateMetrics(processingTime, true);
 
@@ -214,11 +240,16 @@ export class MCPSubAgent {
       this.sendMessage('completion', request.id, { result });
 
       if (this.debugMode) {
-        console.log(`✅ Completed request: ${request.type} (${processingTime.toFixed(2)}s)`);
+        console.log(`✅ Completed request: ${request.type} (${processingTime.toFixed(2)}s, ${energyConsumed.toFixed(1)} energy)`);
       }
 
     } catch (error: any) {
       const processingTime = (performance.now() - startTime) / 1000;
+      
+      // Track energy even on failure
+      const energyConsumed = processingTime * this.energyPerSecond;
+      this.trackEnergyConsumption(energyConsumed);
+      
       this.updateMetrics(processingTime, false);
       
       const errorMessage = error?.message || 'Unknown error';
@@ -408,6 +439,14 @@ export class MCPSubAgent {
     this.requestQueue.sort((a, b) => 
       priorityOrder[a.priority] - priorityOrder[b.priority]
     );
+  }
+
+  /**
+   * Track energy consumption
+   */
+  private trackEnergyConsumption(energy: number): void {
+    this.energyConsumedSinceLastPoll += energy;
+    this.totalEnergyConsumed += energy;
   }
 
   /**

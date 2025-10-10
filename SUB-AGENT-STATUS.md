@@ -1,10 +1,11 @@
 # Sub-Agent Implementation Status
 
 ## ✅ Phase 1 Complete: Isolated Sub-Agent
+## ✅ Phase 2 Complete: Energy Tracking
 
 ### What We Built
 
-A fully functional **MCP Sub-Agent** that runs independently and is ready for integration with the main sensitive loop.
+A fully functional **MCP Sub-Agent** with energy tracking that runs independently and is ready for integration with the main sensitive loop.
 
 ### Files Created
 
@@ -214,15 +215,19 @@ Replace mock handlers with actual MCP operations:
 - [x] Status tracking
 - [x] Metrics collection
 - [x] Mock request handlers
-- [x] Comprehensive test suite
-- [x] All tests passing
+- [x] Comprehensive test suite (6 tests)
+- [x] All isolated tests passing
+- [x] **Energy consumption tracking**
+- [x] **Poll-based energy reporting**
+- [x] **Energy tracking tests (5 tests)**
+- [x] **All energy tests passing**
 - [x] Documentation
 
 ### In Progress 🔄
-- None (Phase 1 complete)
+- None (Phase 2 complete)
 
 ### Planned ⏭️
-- [ ] Energy consumption tracking
+- [x] Energy consumption tracking ✅ **COMPLETE**
 - [ ] Main loop integration
 - [ ] LLM tool exposure
 - [ ] Real MCP implementation
@@ -243,15 +248,35 @@ For Phase 1 (Isolated Sub-Agent):
 - ✅ All tests pass
 - ✅ Interface ready for main loop integration
 
-**The sub-agent is ready to move to the next phase!**
+For Phase 2 (Energy Tracking):
+
+- ✅ Energy consumption tracked per request
+- ✅ Energy calculated based on processing time (2 energy/sec)
+- ✅ Poll-based interface for main loop
+- ✅ `getEnergyConsumedSinceLastPoll()` returns and resets
+- ✅ `getTotalEnergyConsumed()` provides lifetime total
+- ✅ Energy tracked even on request failures
+- ✅ Zero energy when idle
+- ✅ Incremental polling works correctly
+- ✅ All 5 energy tests pass
+
+**The sub-agent is ready for main loop integration!**
 
 ## 🚀 How to Run Tests
 
+### Isolated Sub-Agent Tests
 ```bash
 ./run-subagent-test.sh
 ```
 
 Expected result: `6/6 tests passed`
+
+### Energy Tracking Tests
+```bash
+./run-energy-test.sh
+```
+
+Expected result: `5/5 tests passed`
 
 ## 📝 Notes
 
