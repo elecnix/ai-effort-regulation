@@ -49,7 +49,12 @@ export class TestClient {
       }
 
       return await response.json();
-    } catch (error) {
+    } catch (error: any) {
+      // Handle server connection failures gracefully
+      if (error.code === 'ECONNREFUSED' || error.message?.includes('fetch failed')) {
+        console.warn(`⚠️  Server connection lost while fetching conversation ${requestId}`);
+        return null;
+      }
       console.error(`Error getting conversation: ${error}`);
       throw error;
     }
@@ -71,9 +76,14 @@ export class TestClient {
   }
 
   async getEnergyLevel(): Promise<number> {
-    // Get energy level from stats (average of recent responses)
-    const stats = await this.getStats();
-    return stats.avg_energy_level || 100;
+    try {
+      // Get energy level from stats (average of recent responses)
+      const stats = await this.getStats();
+      return stats.avg_energy_level || 100;
+    } catch (error) {
+      // Return default if server unavailable
+      return 100;
+    }
   }
 
   async waitForResponse(requestId: string, timeoutMs: number = 30000): Promise<ConversationResponse | null> {

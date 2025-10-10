@@ -36,24 +36,31 @@ const testSuites: Record<string, TestScenario[]> = {
   ]
 };
 
+function calculateEstimatedDuration(scenarios: TestScenario[]): number {
+  let totalSeconds = 0;
+  
+  for (const scenario of scenarios) {
+    for (const step of scenario.steps) {
+      if (step.action === 'wait') {
+        totalSeconds += step.payload.seconds;
+      } else {
+        // Add small buffer for other operations (API calls, checks)
+        totalSeconds += 1;
+      }
+    }
+    // Add small buffer for scenario setup/teardown
+    totalSeconds += 10;
+  }
+  
+  return totalSeconds;
+}
+
 async function main() {
   console.log('🚀 AI Effort Regulation Test Suite\n');
   console.log(`📋 Test Type: ${testType}`);
   console.log(`⚙️ Config: ${configPath}`);
   console.log(`🌐 Server: ${config.serverUrl}`);
   console.log(`🤖 Models: ${config.models.join(', ')}\n`);
-
-  // Check if server is running
-  const client = new TestClient(config.serverUrl);
-  const isHealthy = await client.isServerHealthy();
-  
-  if (!isHealthy) {
-    console.error('❌ Server is not running or not healthy!');
-    console.error(`   Please start the server first: npm start`);
-    process.exit(1);
-  }
-
-  console.log('✅ Server is healthy\n');
 
   // Get scenarios to run
   const scenarios = testSuites[testType];
@@ -63,6 +70,26 @@ async function main() {
     console.error(`   Available types: ${Object.keys(testSuites).join(', ')}`);
     process.exit(1);
   }
+
+  // Calculate estimated test duration
+  const estimatedDuration = calculateEstimatedDuration(scenarios);
+  const recommendedServerDuration = Math.ceil(estimatedDuration * 1.5); // Add 50% buffer
+  
+  console.log(`⏱️  Estimated test duration: ${estimatedDuration}s`);
+  console.log(`💡 Recommended server duration: ${recommendedServerDuration}s\n`);
+  console.log(`   Start server with: node dist/src/index.js --replenish-rate 10 --duration ${recommendedServerDuration}\n`);
+
+  // Check if server is running
+  const client = new TestClient(config.serverUrl);
+  const isHealthy = await client.isServerHealthy();
+  
+  if (!isHealthy) {
+    console.error('❌ Server is not running or not healthy!');
+    console.error(`   Please start the server first with sufficient duration`);
+    process.exit(1);
+  }
+
+  console.log('✅ Server is healthy\n');
 
   // Create test runner
   const runner = new TestRunner(configPath);
