@@ -288,6 +288,72 @@ export class IntelligentModel {
           }
         }
       },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'mcp_add_server',
+          description: 'Request the MCP sub-agent to add and configure a new MCP server. The sub-agent will handle the connection asynchronously.',
+          parameters: {
+            type: 'object',
+            properties: {
+              serverId: {
+                type: 'string',
+                description: 'Unique identifier for the server (e.g., "filesystem", "github")'
+              },
+              serverName: {
+                type: 'string',
+                description: 'Human-readable name for the server'
+              },
+              command: {
+                type: 'string',
+                description: 'Command to run the MCP server (e.g., "npx", "node")'
+              },
+              args: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Arguments for the command (e.g., ["-y", "@modelcontextprotocol/server-filesystem", "./data"])'
+              }
+            },
+            required: ['serverId', 'serverName', 'command', 'args']
+          }
+        }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'mcp_list_servers',
+          description: 'List all configured MCP servers and their connection status',
+          parameters: {
+            type: 'object',
+            properties: {}
+          }
+        }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'mcp_call_tool',
+          description: 'Call a tool from a connected MCP server. Use this to invoke MCP tools that have been discovered.',
+          parameters: {
+            type: 'object',
+            properties: {
+              serverId: {
+                type: 'string',
+                description: 'The ID of the MCP server that provides this tool'
+              },
+              toolName: {
+                type: 'string',
+                description: 'The name of the tool to call'
+              },
+              arguments: {
+                type: 'object',
+                description: 'Arguments to pass to the tool (as a JSON object)'
+              }
+            },
+            required: ['serverId', 'toolName', 'arguments']
+          }
+        }
+      },
     ];
 
     // Filter tools based on allowed tools

@@ -3,6 +3,8 @@ import { EnergyRegulator } from './energy';
 import { IntelligentModel, ModelResponse } from './intelligent-model';
 import { Inbox } from './inbox';
 import { ThoughtManager } from './thoughts';
+import { MCPSubAgent } from './mcp-subagent';
+import { MCPClientManager } from './mcp-client';
 
 interface ConversationEntry {
   role: 'user' | 'assistant' | 'system';
@@ -21,6 +23,8 @@ export class SensitiveLoop {
   private inbox: Inbox;
   private reviewThoughtManager: ThoughtManager; // For conversation review thoughts (circular buffer)
   private conversationThoughtManager: ThoughtManager; // For focused conversation thoughts (in-memory)
+  private mcpSubAgent: MCPSubAgent;
+  private mcpClient: MCPClientManager;
   private isRunning = false;
   private debugMode = false;
   private selectedConversationId: string | null = null;
@@ -32,12 +36,18 @@ export class SensitiveLoop {
     this.inbox = new Inbox();
     this.reviewThoughtManager = new ThoughtManager();
     this.conversationThoughtManager = new ThoughtManager();
+    this.mcpSubAgent = new MCPSubAgent(debugMode);
+    this.mcpClient = new MCPClientManager();
   }
 
   async start(durationSeconds?: number) {
     this.isRunning = true;
     console.log(`🚀 Sensitive loop started (Energy: ${this.energyRegulator.getEnergy()})`);
     this.inbox.open();
+    
+    // Start MCP sub-agent
+    this.mcpSubAgent.start();
+    console.log('🔌 MCP Sub-Agent started');
 
     // Set timeout if duration is specified
     if (durationSeconds && durationSeconds > 0) {
@@ -68,8 +78,13 @@ export class SensitiveLoop {
     }
   }
 
-  stop() {
+  async stop() {
     this.isRunning = false;
+    
+    // Stop MCP sub-agent
+    await this.mcpSubAgent.stop();
+    console.log('🔌 MCP Sub-Agent stopped');
+    
     console.log('Sensitive loop stopped');
   }
 
@@ -90,6 +105,13 @@ Key rules:
 5. Use snooze_conversation to delay handling a conversation
 6. Use await_energy to wait for energy recovery
 
+MCP (Model Context Protocol) Tools:
+- You have access to MCP servers that provide additional capabilities
+- Use mcp_add_server to connect to a new MCP server (e.g., filesystem, github)
+- Use mcp_list_servers to see what servers are available
+- Use mcp_call_tool to invoke tools from connected MCP servers
+- The MCP sub-agent handles server management asynchronously in the background
+
 Your energy affects your responses:
 - High energy (>50%): Normal, detailed responses
 - Medium energy (20-50%): Concise responses, consider resting
@@ -100,6 +122,29 @@ Your energy affects your responses:
 
   private async unifiedCognitiveAction() {
     try {
+      // Poll MCP sub-agent for energy consumption
+      const subAgentEnergy = this.mcpSubAgent.getEnergyConsumedSinceLastPoll();
+      if (subAgentEnergy > 0) {
+        this.energyRegulator.consumeEnergy(subAgentEnergy);
+        if (this.debugMode) {
+          console.log(`⚡ MCP Sub-Agent consumed ${subAgentEnergy.toFixed(1)} energy`);
+        }
+      }
+      
+      // Poll MCP sub-agent for messages
+      const subAgentMessages = this.mcpSubAgent.pollMessages();
+      for (const msg of subAgentMessages) {
+        if (this.debugMode) {
+          console.log(`📨 MCP Sub-Agent message: ${msg.type} for request ${msg.requestId}`);
+        }
+        // Add significant messages as thoughts
+        if (msg.type === 'completion' || msg.type === 'error') {
+          const thought = msg.type === 'completion' 
+            ? `MCP sub-agent completed task: ${JSON.stringify(msg.data)}`
+            : `MCP sub-agent error: ${JSON.stringify(msg.data)}`;
+          this.reviewThoughtManager.addThought(thought);
+        }
+      }
       
       // Get all recent conversations, then filter to unanswered ones only
       const allConversations = this.inbox.getRecentConversations(10);
@@ -159,10 +204,10 @@ Your energy affects your responses:
       let allowedTools: string[];
       if (targetConversation) {
         // Answering unanswered conversation
-        allowedTools = ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation'];
+        allowedTools = ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool'];
       } else {
         // Reviewing completed conversations for potential improvements
-        allowedTools = ['select_conversation', 'await_energy', 'think', 'end_conversation', 'snooze_conversation'];
+        allowedTools = ['select_conversation', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool'];
       }
 
       const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, allowedTools);
@@ -372,7 +417,7 @@ Your energy affects your responses:
       console.log(`${this.getEnergyIndicator()} DEBUG LLM full prompt (selected conversation):`, JSON.stringify(messages, null, 2));
     }
 
-    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation']);
+    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool']);
 
     // Attribute the energy consumed during thinking to the selected conversation
     this.inbox.addEnergyConsumption(this.selectedConversationId, modelResponse.energyConsumed);
@@ -465,6 +510,26 @@ Your energy affects your responses:
         } catch (parseError) {
           console.log(`🤔 Malformed think tool call with args "${args}", ignoring`);
         }
+      } else if (name === 'mcp_add_server') {
+        try {
+          const { serverId, serverName, command, args: serverArgs } = JSON.parse(args);
+          await this.handleMcpAddServer(serverId, serverName, command, serverArgs);
+        } catch (parseError) {
+          console.log(`🔌 Malformed mcp_add_server tool call with args "${args}", ignoring`);
+        }
+      } else if (name === 'mcp_list_servers') {
+        try {
+          await this.handleMcpListServers();
+        } catch (parseError) {
+          console.log(`🔌 Malformed mcp_list_servers tool call with args "${args}", ignoring`);
+        }
+      } else if (name === 'mcp_call_tool') {
+        try {
+          const { serverId, toolName, arguments: toolArgs } = JSON.parse(args);
+          await this.handleMcpCallTool(serverId, toolName, toolArgs);
+        } catch (parseError) {
+          console.log(`🔌 Malformed mcp_call_tool tool call with args "${args}", ignoring`);
+        }
       } else {
         console.error(`Unknown tool: ${name}`);
       }
@@ -497,5 +562,67 @@ Your energy affects your responses:
       console.log(`📝 Extracted UUID: ${extractedId} from "${rawId}"`);
     }
     return extractedId;
+  }
+
+  private async handleMcpAddServer(serverId: string, serverName: string, command: string, args: string[]) {
+    console.log(`🔌 Requesting MCP sub-agent to add server: ${serverName} (${serverId})`);
+    
+    const serverConfig = {
+      id: serverId,
+      name: serverName,
+      command,
+      args,
+      enabled: true
+    };
+    
+    const requestId = this.mcpSubAgent.queueRequest('add_server', { serverConfig }, 'high');
+    
+    const thought = `Requested MCP sub-agent to add server "${serverName}" (${serverId}). Request ID: ${requestId}`;
+    this.reviewThoughtManager.addThought(thought);
+    
+    console.log(`📋 MCP server addition queued (request: ${requestId})`);
+  }
+
+  private async handleMcpListServers() {
+    console.log(`🔌 Listing MCP servers via sub-agent`);
+    
+    const requestId = this.mcpSubAgent.queueRequest('list_servers', {}, 'medium');
+    
+    const thought = `Requested list of MCP servers from sub-agent. Request ID: ${requestId}`;
+    this.reviewThoughtManager.addThought(thought);
+    
+    console.log(`📋 MCP server list requested (request: ${requestId})`);
+  }
+
+  private async handleMcpCallTool(serverId: string, toolName: string, toolArgs: any) {
+    console.log(`🔧 Calling MCP tool: ${toolName} on server ${serverId}`);
+    
+    try {
+      // Get the connection for this server
+      const connection = this.mcpClient.getConnection(serverId);
+      
+      if (!connection) {
+        console.error(`❌ No connection found for server: ${serverId}`);
+        const thought = `Failed to call MCP tool "${toolName}": Server ${serverId} not connected`;
+        this.reviewThoughtManager.addThought(thought);
+        return;
+      }
+      
+      // Call the tool
+      const result = await connection.client.callTool({
+        name: toolName,
+        arguments: toolArgs
+      });
+      
+      console.log(`✅ MCP tool result:`, this.truncateText(JSON.stringify(result)));
+      
+      const thought = `Called MCP tool "${toolName}" on server "${serverId}". Result: ${JSON.stringify(result)}`;
+      this.reviewThoughtManager.addThought(thought);
+      
+    } catch (error: any) {
+      console.error(`❌ Error calling MCP tool ${toolName}:`, error?.message || error);
+      const thought = `Error calling MCP tool "${toolName}": ${error?.message || error}`;
+      this.reviewThoughtManager.addThought(thought);
+    }
   }
 }
