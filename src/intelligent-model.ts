@@ -176,17 +176,17 @@ export class IntelligentModel {
         type: 'function' as const,
         function: {
           name: 'respond',
-          description: 'Respond to a user message with the given request ID',
+          description: 'Send your answer to the user\'s question. Use this to reply to conversations.',
           parameters: {
             type: 'object',
             properties: {
               requestId: {
                 type: 'string',
-                description: 'The ID of the request to respond to'
+                description: 'The conversation UUID extracted from "Conversation UUID: message" format'
               },
               content: {
                 type: 'string',
-                description: 'The response content'
+                description: 'YOUR answer or reply to the user (NOT the user\'s message). This is what you want to say back to them.'
               }
             },
             required: ['requestId', 'content']

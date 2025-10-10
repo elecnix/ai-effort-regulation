@@ -81,7 +81,9 @@ IMPORTANT: When using tools, you must call them properly through the tool callin
 When you see a conversation, extract ONLY the UUID part (the XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX) to use as the requestId in your tool calls.
 
 Key rules:
-1. When there are conversations in your inbox, USE THE RESPOND TOOL immediately to answer them
+1. When there are conversations in your inbox, USE THE RESPOND TOOL immediately to answer them with YOUR response
+   - In the content parameter, provide YOUR answer/reply to the user's question (NOT the user's message)
+   - Example: If user asks "What is 2+2?", respond with content: "The answer is 4" (NOT "What is 2+2?")
 2. Extract the UUID from "Conversation UUID: content" format
 3. Use the think tool only for internal reflection when the next action is unclear
 4. Use end_conversation when a conversation is complete
