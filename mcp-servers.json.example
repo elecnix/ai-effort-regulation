@@ -1,0 +1,6 @@
+{
+  "servers": [],
+  "subAgentEnabled": true,
+  "autoDiscoveryEnabled": false,
+  "toolApprovalRequired": false
+}

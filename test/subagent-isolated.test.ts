@@ -51,7 +51,7 @@ async function testBasicOperation() {
     }
   }
 
-  agent.stop();
+  await await agent.stop();
   
   if (completed) {
     console.log('✅ Test 1 PASSED\n');
@@ -107,7 +107,7 @@ async function testMultipleRequests() {
   const metrics = agent.getMetrics();
   console.log(`   📊 Metrics:`, metrics);
 
-  agent.stop();
+  await agent.stop();
   
   if (completedIds.size === requestIds.length) {
     console.log('✅ Test 2 PASSED\n');
@@ -150,7 +150,7 @@ async function testPriorityOrdering() {
     }
   }
 
-  agent.stop();
+  await agent.stop();
 
   // High priority should complete first
   const highCompletedFirst = completionOrder[0] === highPriority;
@@ -184,7 +184,7 @@ async function testCancellation() {
   const status = agent.getStatus(requestId);
   console.log(`   Final status: ${status?.state}`);
 
-  agent.stop();
+  await agent.stop();
 
   if (cancelled && status?.state === 'cancelled') {
     console.log('✅ Test 4 PASSED\n');
@@ -222,7 +222,7 @@ async function testMessagePolling() {
     }
   }
 
-  agent.stop();
+  await agent.stop();
 
   console.log(`   Total messages: ${messageCount}`);
   console.log(`   Status updates: ${statusUpdateCount}`);
@@ -259,7 +259,7 @@ async function testMetrics() {
   const metrics = agent.getMetrics();
   console.log(`   Metrics:`, metrics);
 
-  agent.stop();
+  await agent.stop();
 
   if (metrics.totalRequests === 3 && metrics.completedRequests === 3) {
     console.log('✅ Test 6 PASSED\n');
