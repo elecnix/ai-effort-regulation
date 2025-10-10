@@ -15,7 +15,7 @@ export const snoozeFeatureScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for acknowledgment',
       payload: {
-        seconds: 5
+        seconds: 20
       }
     },
     {

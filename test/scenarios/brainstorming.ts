@@ -15,7 +15,7 @@ export const brainstormingScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for initial response',
       payload: {
-        seconds: 10
+        seconds: 25
       }
     },
     {

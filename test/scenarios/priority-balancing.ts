@@ -43,7 +43,7 @@ export const priorityBalancingScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for initial responses',
       payload: {
-        seconds: 15
+        seconds: 25
       }
     },
     {
