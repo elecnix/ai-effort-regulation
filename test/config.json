@@ -9,14 +9,14 @@
     "maxAcceptable": 100
   },
   "timeouts": {
-    "conversation": 1800,
-    "snooze": 300,
-    "response": 30,
-    "energyCheck": 5
+    "conversation": 120,
+    "snooze": 60,
+    "response": 15,
+    "energyCheck": 2
   },
   "testSettings": {
-    "maxIterations": 100,
-    "energySampleInterval": 10,
+    "maxIterations": 30,
+    "energySampleInterval": 2,
     "verbose": false,
     "saveReports": true,
     "reportDir": "./test-reports",

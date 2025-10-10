@@ -74,7 +74,7 @@ export const priorityBalancingScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for conversation management',
       payload: {
-        seconds: 60
+        seconds: 20
       }
     },
     {
@@ -175,7 +175,7 @@ export const energyExhaustionScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for energy recovery',
       payload: {
-        seconds: 60
+        seconds: 20
       }
     },
     {

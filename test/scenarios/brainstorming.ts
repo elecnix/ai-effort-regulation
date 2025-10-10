@@ -34,7 +34,7 @@ export const brainstormingScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for AI to continue brainstorming',
       payload: {
-        seconds: 30
+        seconds: 15
       }
     },
     {
@@ -48,7 +48,7 @@ export const brainstormingScenario: TestScenario = {
       action: 'wait',
       description: 'Wait longer to see if AI recognizes one-sided conversation',
       payload: {
-        seconds: 60
+        seconds: 20
       }
     },
     {
@@ -67,7 +67,7 @@ export const brainstormingScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for conversation to naturally end or snooze',
       payload: {
-        seconds: 120
+        seconds: 30
       }
     },
     {
@@ -114,7 +114,7 @@ export const abandonedBrainstormingScenario: TestScenario = {
       action: 'wait',
       description: 'Simulate user abandonment - long wait',
       payload: {
-        seconds: 180
+        seconds: 30
       }
     },
     {

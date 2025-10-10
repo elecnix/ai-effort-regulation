@@ -307,8 +307,14 @@ Your energy affects your responses:
 
       // Add response to inbox - this handles both new responses and additions to existing conversations
       const userMessage = conversation.inputMessage;
-      const energyLevel = this.energyRegulator.getEnergy();
+      let energyLevel = this.energyRegulator.getEnergy();
       const modelUsed = this.intelligentModel.getCurrentModel();
+      
+      // Defensive: ensure energy is never NaN before saving to database
+      if (isNaN(energyLevel) || energyLevel === null || energyLevel === undefined) {
+        console.error(`⚠️ Energy level is invalid (${energyLevel}), using 0 instead`);
+        energyLevel = 0;
+      }
 
       this.inbox.addResponse(requestId, userMessage, responseContent, energyLevel, modelUsed);
 

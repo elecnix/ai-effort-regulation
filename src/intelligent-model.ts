@@ -85,7 +85,8 @@ export class IntelligentModel {
     const endTime = performance.now();
     const timeElapsedSeconds = (endTime - startTime) / 1000;
 
-    const actualEnergyConsumed = timeElapsedSeconds * 2;
+    // Defensive: ensure energy calculation is valid
+    const actualEnergyConsumed = isNaN(timeElapsedSeconds) || timeElapsedSeconds < 0 ? 1 : timeElapsedSeconds * 2;
     energyRegulator.consumeEnergy(actualEnergyConsumed);
 
     this.updateConsumption(this.currentModel, actualEnergyConsumed);

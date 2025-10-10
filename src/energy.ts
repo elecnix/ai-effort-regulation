@@ -20,12 +20,21 @@ export class EnergyRegulator {
   }
 
   consumeEnergy(amount: number): void {
-    this.energy = Math.round(Math.max(this.minEnergy, this.energy - amount));
+    // Defensive: ensure amount is a valid number
+    const safeAmount = isNaN(amount) || amount === null || amount === undefined ? 0 : amount;
+    
+    this.energy = Math.round(Math.max(this.minEnergy, this.energy - safeAmount));
+    
+    // Defensive: ensure energy never becomes NaN
+    if (isNaN(this.energy)) {
+      console.error(`⚠️ Energy became NaN! Resetting to 0. Previous amount: ${amount}`);
+      this.energy = 0;
+    }
 
     // Record the consumption event for load average calculation
     this.energyConsumptionEvents.push({
       timestamp: Date.now(),
-      amount: amount
+      amount: safeAmount
     });
 
     // Keep only the last 24 hours of events (15 minutes * 4 = 1 hour, but keep more for safety)

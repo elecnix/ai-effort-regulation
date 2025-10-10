@@ -34,7 +34,7 @@ export const simpleConversationScenario: TestScenario = {
       action: 'wait',
       description: 'Wait to see if conversation continues or snoozes',
       payload: {
-        seconds: 30
+        seconds: 10
       }
     },
     {
@@ -48,7 +48,7 @@ export const simpleConversationScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for potential snooze (exponential backoff)',
       payload: {
-        seconds: 60
+        seconds: 15
       }
     },
     {
@@ -121,7 +121,7 @@ export const multipleGreetingsScenario: TestScenario = {
       action: 'wait',
       description: 'Wait for conversation management',
       payload: {
-        seconds: 60
+        seconds: 20
       }
     }
   ],

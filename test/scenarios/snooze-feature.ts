@@ -40,9 +40,9 @@ export const snoozeFeatureScenario: TestScenario = {
     },
     {
       action: 'wait',
-      description: 'Wait for snooze period to expire (5 minutes)',
+      description: 'Wait for snooze period to expire',
       payload: {
-        seconds: 310 // 5 minutes + 10 seconds buffer
+        seconds: 30
       }
     },
     {
@@ -118,37 +118,37 @@ export const multipleSnoozeScenario: TestScenario = {
     },
     {
       action: 'wait',
-      description: 'Wait for first reminder (2 minutes)',
+      description: 'Wait for first reminder',
       payload: {
-        seconds: 130
+        seconds: 15
       }
     },
     {
       action: 'check_response',
-      description: 'Check for first reminder',
+      description: 'Check first reminder',
       payload: {
-        requestId: '' // First request ID
+        requestId: '' // Will be filled dynamically (first conversation)
       }
     },
     {
       action: 'wait',
-      description: 'Wait for second reminder (3 minutes total)',
+      description: 'Wait for second reminder',
       payload: {
-        seconds: 70
+        seconds: 15
       }
     },
     {
       action: 'check_response',
-      description: 'Check for second reminder',
+      description: 'Check second reminder',
       payload: {
-        requestId: '' // Second request ID
+        requestId: '' // Will be filled dynamically (second conversation)
       }
     },
     {
       action: 'wait',
-      description: 'Wait for third reminder (5 minutes total)',
+      description: 'Wait for third reminder',
       payload: {
-        seconds: 130
+        seconds: 15
       }
     },
     {
