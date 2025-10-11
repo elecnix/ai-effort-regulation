@@ -69,6 +69,12 @@ npm start
 
 The system will start on `http://localhost:6740` (default port)
 
+**Note**: On first run, the system creates a `conversations.db` file. If upgrading from v1.0, delete the old database:
+```bash
+rm conversations.db
+npm start
+```
+
 ### Command-Line Options
 
 ```bash

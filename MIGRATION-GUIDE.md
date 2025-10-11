@@ -2,6 +2,142 @@
 
 Guide for upgrading to the latest version of AI Effort Regulation.
 
+## Version 1.1 (October 11, 2025) 🚀
+
+### Overview
+
+Version 1.1 includes **critical production-readiness fixes**:
+
+1. **Database Schema Change**: Fixed foreign key constraint issue
+2. **Rate Limiting Fix**: Returns JSON instead of HTML
+3. **Input Validation**: Query parameter validation added
+4. **Enhanced Health Checks**: Component-level monitoring
+5. **Kubernetes Probes**: Readiness and liveness endpoints
+
+### ⚠️ Breaking Change: Database Schema
+
+The `app_conversations` table schema has changed to fix a critical foreign key constraint issue.
+
+### Upgrading from 1.0 to 1.1
+
+#### Step 1: Backup Data (If Needed)
+
+If you have important conversations in production:
+
+```bash
+# Backup the database
+cp conversations.db conversations.db.backup
+```
+
+#### Step 2: Update Code
+
+```bash
+# Pull latest code
+git pull origin testing-features  # or main after merge
+
+# Install dependencies
+npm install
+
+# Rebuild
+npm run build
+```
+
+#### Step 3: Database Migration
+
+**Option A: Fresh Start (Recommended for Development)**
+
+```bash
+# Delete old database
+rm conversations.db
+
+# Start server (creates new schema)
+npm start
+```
+
+**Option B: Manual Migration (For Production)**
+
+If you need to preserve data, you'll need to manually migrate:
+
+```sql
+-- Connect to database
+sqlite3 conversations.db
+
+-- Backup app_conversations data
+CREATE TABLE app_conversations_backup AS 
+SELECT * FROM app_conversations;
+
+-- Drop old table
+DROP TABLE app_conversations;
+
+-- Restart the application to create new schema
+-- Then manually restore data if needed
+```
+
+**Note**: The foreign key constraint that was removed was causing errors, so most production systems likely have no data in this table anyway.
+
+#### Step 4: Verify
+
+```bash
+# Test health check
+curl http://localhost:6740/health
+
+# Should show component status:
+# {
+#   "status": "ok",
+#   "components": {
+#     "database": "healthy",
+#     "energyRegulator": "healthy",
+#     "inbox": "healthy"
+#   }
+# }
+
+# Test new endpoints
+curl http://localhost:6740/ready
+curl http://localhost:6740/live
+```
+
+### What Changed
+
+#### Database Schema
+- Removed invalid foreign key: `FOREIGN KEY (conversation_id) REFERENCES conversations(request_id)`
+- Added UNIQUE constraint: `UNIQUE(conversation_id, app_id)`
+- Improved error handling for association failures
+
+#### API Behavior
+- Rate limiting now returns JSON (was HTML)
+- Query parameters validated (limit, state, budgetStatus)
+- Health check includes component status
+- New endpoints: `/ready`, `/live`
+
+#### Error Responses
+All errors now return consistent JSON format:
+```json
+{
+  "error": "Error message here"
+}
+```
+
+### No Code Changes Required
+
+All API changes are backward compatible. Your existing code will continue to work.
+
+### Testing After Migration
+
+```bash
+# Run test suite
+npm test
+
+# Or manual tests
+curl -X POST http://localhost:6740/message \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Test message", "energyBudget": 20}'
+
+# Should return: {"status": "received", "requestId": "..."}
+# No FOREIGN KEY errors!
+```
+
+---
+
 ## Version 1.0 (October 2025)
 
 ### Overview

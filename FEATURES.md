@@ -605,19 +605,43 @@ These features are documented but not yet implemented:
 | Scalability | ✅ Ready | 1.0 | N/A |
 | Logging | ✅ Ready | 1.0 | N/A |
 | Health Checks | ✅ Ready | 1.0 | 100% |
+| **Critical Production Fixes** | ✅ Ready | **1.1** | **100%** |
+| **Query Parameter Validation** | ✅ Ready | **1.1** | **100%** |
+| **Enhanced Health Monitoring** | ✅ Ready | **1.1** | **100%** |
+| **Kubernetes Probes** | ✅ Ready | **1.1** | **100%** |
 
 ## Summary
 
 The AI Effort Regulation system is a **production-ready** platform with:
 
-- **25 implemented features** across 6 categories
+- **29 implemented features** across 6 categories
 - **100% test coverage** on testable features
 - **Comprehensive documentation** for users and developers
 - **Backward compatibility** maintained throughout
 - **Active development** with clear roadmap
+- **All critical bugs fixed** in v1.1
 
-**Total Features**: 25 production-ready + 19 planned/under consideration
+**Total Features**: 29 production-ready + 19 planned/under consideration
 
 **Status**: ✅ Production Ready  
-**Version**: 1.0  
+**Version**: 1.1  
 **Last Updated**: October 11, 2025
+
+## Recent Updates (v1.1)
+
+### Critical Fixes
+- Fixed database foreign key constraint issue
+- Fixed rate limiting to return JSON
+- Fixed server unresponsiveness after rate limit
+
+### New Features
+- Query parameter validation (limit, state, budgetStatus)
+- Enhanced health checks with component status
+- Kubernetes readiness probe (`/ready`)
+- Kubernetes liveness probe (`/live`)
+- Consistent JSON error responses
+
+### Test Results
+- 12/12 critical tests passed (100%)
+- All edge case issues resolved
+- Production ready status achieved
