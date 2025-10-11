@@ -58,7 +58,9 @@ async function runIdleTest(): Promise<TestResult> {
     ], {
       env: {
         ...process.env,
-        DB_PATH: TEST_DB_PATH
+        DB_PATH: TEST_DB_PATH,
+        OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1',
+        PORT: '6741' // Use different port to avoid conflict with running server
       },
       stdio: ['ignore', 'pipe', 'pipe']
     });
