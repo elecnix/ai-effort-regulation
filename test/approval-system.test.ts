@@ -1,29 +1,41 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { Inbox } from '../src/inbox';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const TEST_DB_PATH = path.join(process.cwd(), 'test-approval.db');
+let testCounter = 0;
 
 describe('Approval System', () => {
   let inbox: Inbox;
+  let currentTestDb: string;
 
-  before(() => {
-    // Clean up any existing test database
-    if (fs.existsSync(TEST_DB_PATH)) {
-      fs.unlinkSync(TEST_DB_PATH);
+  beforeEach(() => {
+    // Use unique database for each test
+    testCounter++;
+    currentTestDb = path.join(process.cwd(), `test-approval-${testCounter}.db`);
+    
+    // Clean up if exists
+    if (fs.existsSync(currentTestDb)) {
+      fs.unlinkSync(currentTestDb);
     }
     
-    // Override DB path for testing
-    process.env.TEST_DB_PATH = TEST_DB_PATH;
-    inbox = new Inbox();
+    // Create inbox with test database path
+    inbox = new Inbox(currentTestDb);
   });
 
-  after(() => {
-    // Clean up test database
-    if (fs.existsSync(TEST_DB_PATH)) {
-      fs.unlinkSync(TEST_DB_PATH);
+  afterEach(() => {
+    // Close database and clean up
+    if (inbox && (inbox as any).db) {
+      try {
+        (inbox as any).db.close();
+      } catch (e) {
+        // Ignore close errors
+      }
+    }
+    
+    if (fs.existsSync(currentTestDb)) {
+      fs.unlinkSync(currentTestDb);
     }
   });
 

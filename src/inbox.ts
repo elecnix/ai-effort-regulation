@@ -33,7 +33,7 @@ export interface ConversationStats {
   urgent_responses: number | null;
 }
 
-const DB_PATH = path.join(process.cwd(), 'conversations.db');
+const DB_PATH = process.env.TEST_DB_PATH || path.join(process.cwd(), 'conversations.db');
 
 export class Inbox {
   private db: Database.Database;
@@ -48,8 +48,9 @@ export class Inbox {
   private getUnansweredCountStmt!: Database.Statement;
   private endConversationStmt!: Database.Statement;
 
-  constructor() {
-    this.db = new Database(DB_PATH);
+  constructor(dbPath?: string) {
+    const finalPath = dbPath || process.env.TEST_DB_PATH || path.join(process.cwd(), 'conversations.db');
+    this.db = new Database(finalPath);
     this.initializeDatabase();
     this.prepareStatements();
   }
@@ -664,7 +665,7 @@ export class Inbox {
         SELECT id, content, timestamp, energy_level as energyLevel, model_used as modelUsed
         FROM responses
         WHERE conversation_id = ? AND approval_status = 'pending'
-        ORDER BY timestamp DESC
+        ORDER BY id DESC
         LIMIT 1
       `);
       const row = stmt.get(conversation.id) as { id: number; content: string; timestamp: string; energyLevel: number; modelUsed: string } | undefined;
