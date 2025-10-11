@@ -299,16 +299,37 @@ Check system health.
 ## 🎨 Key Features
 
 - **Energy-Aware Processing**: Responses adapt to available energy
+- **User-Guided Energy Budgets**: Specify effort allocation per conversation
 - **Continuous Reflection**: System thinks about past conversations
 - **Model Switching**: Automatic optimization based on complexity needs
+- **MCP Integration**: Extensible tool system with unified interface
+- **HTTP Transport**: Connect to remote MCP servers via HTTP/HTTPS
+- **Tool Namespacing**: Automatic collision prevention for MCP tools
 - **Persistent Memory**: SQLite-backed conversation history
 - **Real-time Analytics**: System performance monitoring
 - **Adaptive Sleep**: Energy replenishment when idle
 
-## 📚 Learn More
+## 📚 Documentation
 
-- **[Specification](./2-specification.md)**: Detailed technical requirements
-- **[Original Prompt](./1-prompt.md)**: Initial project requirements
+### User Documentation
+- **[User Guide](./USER-GUIDE.md)**: Comprehensive user guide with examples
+- **[Quick Reference](./QUICK-REFERENCE.md)**: Fast reference for common tasks
+- **[Features Overview](./FEATURES.md)**: Complete feature list and status
+- **[Energy Budget Quick Start](./ENERGY-BUDGET-QUICKSTART.md)**: Guide to energy budgets
+- **[Migration Guide](./MIGRATION-GUIDE.md)**: Upgrading from previous versions
+- **[Release Notes](./RELEASE-NOTES.md)**: Latest features and changes
+
+### Technical Documentation
+- **[System Specification](./2-specification.md)**: Detailed technical requirements
+- **[MCP Integration Spec](./3-mcp-integration-spec.md)**: MCP integration details
+- **[Energy Budget Spec](./5-energy-budget-spec.md)**: Energy budget specification
+- **[HTTP MCP Spec](./HTTP-MCP-SPEC.md)**: HTTP transport specification
+
+### Implementation Guides
+- **[Unified MCP Tools](./UNIFIED-MCP-TOOLS.md)**: MCP tool system explained
+- **[Tool Namespacing](./TOOL-NAMESPACING.md)**: Tool naming and collision prevention
+- **[HTTP MCP Implementation](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md)**: HTTP transport guide
+- **[MCP Integration Complete](./MCP-INTEGRATION-COMPLETE.md)**: MCP integration summary
 
 ## 🤝 Contributing
 
