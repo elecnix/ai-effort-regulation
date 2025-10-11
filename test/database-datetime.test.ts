@@ -94,13 +94,16 @@ async function test3_RecentConversationsWithSnooze() {
   inbox.snoozeConversation(conv1, 60);
 
   // Get recent conversations (should not include snoozed one)
-  const recent = inbox.getRecentConversations(10);
+  // Use a larger limit to ensure we get all conversations
+  const recent = inbox.getRecentConversations(50);
   console.log(`   Found ${recent.length} recent conversations`);
   
   if (recent.some(c => c.id === conv1)) {
     throw new Error('Snoozed conversation should not be in recent conversations');
   }
   if (!recent.some(c => c.id === conv2)) {
+    // Debug: show what we got
+    console.log(`   Recent conversation IDs: ${recent.map(c => c.id).join(', ')}`);
     throw new Error('Non-snoozed conversation should be in recent conversations');
   }
   console.log('   ✓ Snooze filtering works correctly');
