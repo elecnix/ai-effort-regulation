@@ -57,6 +57,30 @@ app.use((req, res, next) => {
 // Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));
 
+// Root endpoint - API information
+app.get('/', (req, res) => {
+  res.json({
+    name: 'AI Effort Regulation API',
+    version: '1.0.0',
+    endpoints: {
+      message: 'POST /message - Submit a new message',
+      conversations: 'GET /conversations - List conversations',
+      conversationDetail: 'GET /conversations/:requestId - Get conversation details',
+      stats: 'GET /stats - Get conversation statistics',
+      apps: 'GET /apps - List installed apps',
+      appDetail: 'GET /apps/:appId - Get app details',
+      appEnergy: 'GET /apps/:appId/energy - Get app energy metrics',
+      installApp: 'POST /apps/install - Install a new app',
+      uninstallApp: 'DELETE /apps/:appId - Uninstall an app',
+      energy: 'GET /energy - Get current energy level',
+      health: 'GET /health - Health check',
+      ready: 'GET /ready - Readiness probe',
+      live: 'GET /live - Liveness probe'
+    },
+    documentation: 'See README.md for full API documentation'
+  });
+});
+
 // Message queue for the sensitive loop
 export interface Message {
   id: string;
