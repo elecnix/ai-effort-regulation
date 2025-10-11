@@ -17,6 +17,13 @@ export interface ModelResponse {
   }>;
 }
 
+export interface MCPToolDefinition {
+  name: string;
+  description: string;
+  serverId: string;
+  inputSchema: any;
+}
+
 export class IntelligentModel {
   private currentModel: string;
   // Start with estimates of energy consumption
@@ -60,7 +67,8 @@ export class IntelligentModel {
     messages: Array<{ role: string; content: string }>,
     energyRegulator: EnergyRegulator,
     urgent: boolean = false,
-    allowedTools: string[] = ['respond', 'await_energy', 'select_conversation']
+    allowedTools: string[] = ['respond', 'await_energy', 'select_conversation'],
+    mcpTools: MCPToolDefinition[] = []
   ): Promise<ModelResponse> {
     const provider = process.env.AI_PROVIDER || 'ollama';
 
@@ -81,7 +89,7 @@ export class IntelligentModel {
 
     // Generate response
     const startTime = performance.now();
-    const llmResponse = await this.generateLLMResponse(messages, this.currentModel, urgent, allowedTools, energyRegulator);
+    const llmResponse = await this.generateLLMResponse(messages, this.currentModel, urgent, allowedTools, energyRegulator, mcpTools);
     const endTime = performance.now();
     const timeElapsedSeconds = (endTime - startTime) / 1000;
 
@@ -174,7 +182,8 @@ export class IntelligentModel {
     model: string,
     urgent: boolean,
     allowedTools: string[],
-    energyRegulator: EnergyRegulator
+    energyRegulator: EnergyRegulator,
+    mcpTools: MCPToolDefinition[] = []
   ): Promise<{ content: string; toolCalls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }> }> {
     const maxRetries = 3;
     const client = this.getClient();
@@ -338,35 +347,23 @@ export class IntelligentModel {
           }
         }
       },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'mcp_call_tool',
-          description: 'Call a tool from a connected MCP server. Use this to invoke MCP tools that have been discovered.',
-          parameters: {
-            type: 'object',
-            properties: {
-              serverId: {
-                type: 'string',
-                description: 'The ID of the MCP server that provides this tool'
-              },
-              toolName: {
-                type: 'string',
-                description: 'The name of the tool to call'
-              },
-              arguments: {
-                type: 'object',
-                description: 'Arguments to pass to the tool (as a JSON object)'
-              }
-            },
-            required: ['serverId', 'toolName', 'arguments']
-          }
-        }
-      },
     ];
 
-    // Filter tools based on allowed tools
-    const tools = allTools.filter(tool => allowedTools.includes(tool.function.name));
+    // Filter core tools based on allowed tools
+    const coreTools = allTools.filter(tool => allowedTools.includes(tool.function.name));
+
+    // Convert MCP tools to OpenAI tool format and add them
+    const mcpToolsFormatted = mcpTools.map(mcpTool => ({
+      type: 'function' as const,
+      function: {
+        name: mcpTool.name,
+        description: `[MCP:${mcpTool.serverId}] ${mcpTool.description}`,
+        parameters: mcpTool.inputSchema
+      }
+    }));
+
+    // Combine core tools and MCP tools
+    const tools = [...coreTools, ...mcpToolsFormatted];
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {

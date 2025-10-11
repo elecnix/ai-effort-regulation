@@ -31,6 +31,7 @@ async function testAddRealMCPServer() {
   const serverConfig: MCPServerConfig = {
     id: 'test-server',
     name: 'Test MCP Server',
+    transport: 'stdio',
     command: 'node',
     args: [path.join(process.cwd(), 'test/simple-mcp-server.js')],
     enabled: true
@@ -93,6 +94,7 @@ async function testTestMCPServer() {
   const serverConfig: MCPServerConfig = {
     id: 'test-server-2',
     name: 'Test Server 2',
+    transport: 'stdio',
     command: 'node',
     args: [path.join(process.cwd(), 'test/simple-mcp-server.js')],
     enabled: true
@@ -220,6 +222,7 @@ async function testEnergyTracking() {
   const serverConfig: MCPServerConfig = {
     id: 'test-energy-server',
     name: 'Energy Test Server',
+    transport: 'stdio',
     command: 'node',
     args: [path.join(process.cwd(), 'test/simple-mcp-server.js')],
     enabled: true

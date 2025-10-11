@@ -1,6 +1,6 @@
 import { messageQueue, Message } from './server';
 import { EnergyRegulator } from './energy';
-import { IntelligentModel, ModelResponse } from './intelligent-model';
+import { IntelligentModel, ModelResponse, MCPToolDefinition } from './intelligent-model';
 import { Inbox } from './inbox';
 import { ThoughtManager } from './thoughts';
 import { MCPSubAgent } from './mcp-subagent';
@@ -88,6 +88,25 @@ export class SensitiveLoop {
     console.log('Sensitive loop stopped');
   }
 
+  private getMCPTools(): MCPToolDefinition[] {
+    const mcpTools: MCPToolDefinition[] = [];
+    const connections = this.mcpClient.getAllConnections();
+    
+    for (const connection of connections) {
+      if (connection.connected) {
+        for (const tool of connection.tools) {
+          mcpTools.push({
+            name: tool.name,
+            description: tool.description,
+            serverId: tool.serverId,
+            inputSchema: tool.inputSchema
+          });
+        }
+      }
+    }
+    
+    return mcpTools;
+  }
 
   private readonly systemMessage = `You are an AI assistant with energy levels that affect your performance. Every action you take consumes energy. You have access to tools to perform actions.
 
@@ -117,7 +136,7 @@ MCP (Model Context Protocol) Tools:
 - You have access to MCP servers that provide additional capabilities
 - Use mcp_add_server to connect to a new MCP server (e.g., filesystem, github)
 - Use mcp_list_servers to see what servers are available
-- Use mcp_call_tool to invoke tools from connected MCP servers
+- MCP tools are directly available in your tool list with [MCP:server_id] prefix in their description
 - The MCP sub-agent handles server management asynchronously in the background
 - IMPORTANT: await_energy, respond, think, end_conversation, snooze_conversation, and select_conversation are YOUR CORE TOOLS, NOT MCP tools
 
@@ -213,13 +232,16 @@ Your energy affects your responses:
       let allowedTools: string[];
       if (targetConversation) {
         // Answering unanswered conversation
-        allowedTools = ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool'];
+        allowedTools = ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers'];
       } else {
         // Reviewing completed conversations for potential improvements
-        allowedTools = ['select_conversation', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool'];
+        allowedTools = ['select_conversation', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers'];
       }
 
-      const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, allowedTools);
+      // Get MCP tools from connected servers
+      const mcpTools = this.getMCPTools();
+
+      const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, allowedTools, mcpTools);
 
       await this.executeLLMAutonomousDecision(modelResponse);
 
@@ -449,7 +471,10 @@ Your energy affects your responses:
       console.log(`${this.getEnergyIndicator()} DEBUG LLM full prompt (selected conversation):`, JSON.stringify(messages, null, 2));
     }
 
-    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool']);
+    // Get MCP tools from connected servers
+    const mcpTools = this.getMCPTools();
+
+    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers'], mcpTools);
 
     // Attribute the energy consumed during thinking to the selected conversation
     this.inbox.addEnergyConsumption(this.selectedConversationId, modelResponse.energyConsumed);
@@ -562,15 +587,22 @@ Your energy affects your responses:
         } catch (parseError) {
           console.log(`🔌 Malformed mcp_list_servers tool call with args "${args}", ignoring`);
         }
-      } else if (name === 'mcp_call_tool') {
-        try {
-          const { serverId, toolName, arguments: toolArgs } = JSON.parse(args);
-          await this.handleMcpCallTool(serverId, toolName, toolArgs);
-        } catch (parseError) {
-          console.log(`🔌 Malformed mcp_call_tool tool call with args "${args}", ignoring`);
-        }
       } else {
-        console.error(`Unknown tool: ${name}`);
+        // Check if this is an MCP tool call
+        const mcpTools = this.getMCPTools();
+        const mcpTool = mcpTools.find(t => t.name === name);
+        
+        if (mcpTool) {
+          // This is an MCP tool - route to MCP client
+          try {
+            const toolArgs = JSON.parse(args);
+            await this.handleMcpToolCall(mcpTool.serverId, name, toolArgs);
+          } catch (parseError) {
+            console.log(`🔌 Malformed MCP tool call ${name} with args "${args}", ignoring`);
+          }
+        } else {
+          console.error(`Unknown tool: ${name}`);
+        }
       }
     } catch (error) {
       console.error(`Error executing tool ${name} with args "${args}":`, error);
@@ -633,7 +665,7 @@ Your energy affects your responses:
     console.log(`📋 MCP server list requested (request: ${requestId})`);
   }
 
-  private async handleMcpCallTool(serverId: string, toolName: string, toolArgs: any) {
+  private async handleMcpToolCall(serverId: string, toolName: string, toolArgs: any) {
     console.log(`🔧 Calling MCP tool: ${toolName} on server ${serverId}`);
     
     try {
@@ -647,11 +679,8 @@ Your energy affects your responses:
         return;
       }
       
-      // Call the tool
-      const result = await connection.client.callTool({
-        name: toolName,
-        arguments: toolArgs
-      });
+      // Call the tool using the client manager
+      const result = await this.mcpClient.callTool(serverId, toolName, toolArgs);
       
       console.log(`✅ MCP tool result:`, this.truncateText(JSON.stringify(result)));
       
