@@ -57,6 +57,7 @@ Complete guide to all documentation in the AI Effort Regulation project.
 | **[MCP-SPEC-VS-IMPLEMENTATION.md](./MCP-SPEC-VS-IMPLEMENTATION.md)** | Spec vs implementation comparison | Developers |
 | **[8-apps-implementation-plan.md](./8-apps-implementation-plan.md)** | Apps feature implementation plan | Developers, project managers |
 | **[9-apps-implementation-summary.md](./9-apps-implementation-summary.md)** | Apps feature implementation status | All stakeholders |
+| **[10-app-conversation-binding.md](./10-app-conversation-binding.md)** | App-conversation binding architecture | Developers, architects |
 
 ### Development Documentation
 

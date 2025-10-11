@@ -9,11 +9,12 @@
 3. [Core Concepts](#core-concepts)
 4. [Using the System](#using-the-system)
 5. [Energy Budget Feature](#energy-budget-feature)
-6. [MCP Integration](#mcp-integration)
-7. [API Reference](#api-reference)
-8. [Testing & Verification](#testing--verification)
-9. [Troubleshooting](#troubleshooting)
-10. [Advanced Configuration](#advanced-configuration)
+6. [Multi-App Architecture](#multi-app-architecture) **NEW!**
+7. [MCP Integration](#mcp-integration)
+8. [API Reference](#api-reference)
+9. [Testing & Verification](#testing--verification)
+10. [Troubleshooting](#troubleshooting)
+11. [Advanced Configuration](#advanced-configuration)
 
 ---
 
@@ -26,6 +27,9 @@ The AI Effort Regulation system is an intelligent AI assistant that manages its 
 - **🔋 Energy Management**: Leaky bucket algorithm regulates computational effort
 - **🧠 Adaptive Behavior**: Response quality adjusts to energy levels
 - **💰 Energy Budgets**: User-guided effort allocation per conversation
+- **📱 Multi-App Architecture**: Isolated apps for different communication channels (NEW!)
+- **🎯 App Registry**: Install, manage, and monitor multiple apps
+- **⚡ Per-App Energy Tracking**: Monitor energy consumption by app with time windows
 - **🔌 MCP Integration**: Extensible tool system via Model Context Protocol
 - **🌐 HTTP Transport**: Connect to remote MCP servers
 - **🔄 Continuous Reflection**: Analyzes past conversations for insights
@@ -334,6 +338,155 @@ The system tracks budget usage:
 2. **Zero Budget**: Special case meaning "last chance to respond" - use for emergencies only.
 3. **Backward Compatible**: Omitting the budget parameter works as before.
 4. **Quality First**: The AI prioritizes response quality over strict budget adherence.
+
+---
+
+## Multi-App Architecture
+
+The system now supports multiple apps that can run simultaneously, each with isolated conversations and independent energy tracking. This enables the AI to handle different types of interactions (chat, email, calendar, etc.) through specialized apps.
+
+### What are Apps?
+
+Apps are isolated modules that handle specific types of conversations:
+
+- **Chat App**: Handles HTTP-based conversations (default, always installed)
+- **Future Apps**: Gmail, Calendar, Slack, custom integrations
+
+Each app:
+- Has its own isolated conversation space
+- Tracks energy consumption independently
+- Can have energy budgets (hourly/daily limits)
+- Routes messages through the central sensitive loop
+
+### App Management
+
+#### List Installed Apps
+
+```bash
+curl http://localhost:6740/apps
+```
+
+**Response:**
+```json
+{
+  "apps": [
+    {
+      "id": "chat",
+      "name": "Chat App",
+      "type": "in-process",
+      "enabled": true,
+      "energyMetrics": {
+        "total": 1250.5,
+        "last24h": 450.2,
+        "last1h": 85.3,
+        "last1min": 5.2
+      }
+    }
+  ]
+}
+```
+
+#### Install a New App
+
+```bash
+curl -X POST http://localhost:6740/apps/install \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "gmail",
+    "name": "Gmail App",
+    "type": "http",
+    "enabled": true,
+    "config": {
+      "url": "http://localhost:8080"
+    },
+    "hourlyEnergyBudget": 100,
+    "dailyEnergyBudget": 1000
+  }'
+```
+
+#### Start/Stop Apps
+
+```bash
+# Start an app
+curl -X POST http://localhost:6740/apps/gmail/start
+
+# Stop an app
+curl -X POST http://localhost:6740/apps/gmail/stop
+```
+
+#### Uninstall an App
+
+```bash
+curl -X DELETE http://localhost:6740/apps/gmail
+```
+
+### Energy Tracking by App
+
+Each app tracks energy consumption across multiple time windows:
+
+- **total**: All-time energy consumption
+- **last24h**: Energy consumed in last 24 hours
+- **last1h**: Energy consumed in last hour
+- **last1min**: Energy consumed in last minute
+
+This enables:
+- Identifying which apps consume the most energy
+- Setting per-app energy budgets
+- Monitoring real-time vs. historical usage
+- Making informed decisions about app priorities
+
+### App Isolation
+
+**Key Benefits:**
+
+1. **Conversation Isolation**: Each app only sees its own conversations
+2. **Independent Context**: Apps maintain separate conversation histories
+3. **Secure Boundaries**: Apps cannot access other apps' data
+4. **Extensibility**: Easy to add new apps without affecting existing ones
+
+**Example:**
+```typescript
+// Chat app only sees chat conversations
+GET /apps/chat/conversations
+
+// Future Gmail app would only see email conversations
+GET /apps/gmail/conversations
+```
+
+### App Types
+
+1. **In-Process Apps**: Run within the main process (e.g., Chat App)
+2. **HTTP Apps**: External services accessed via HTTP (future)
+3. **MCP Apps**: Apps that use MCP servers for specialized tools (future)
+
+### Use Cases
+
+**Current:**
+- Chat conversations via HTTP API
+
+**Future:**
+- Email management (Gmail app)
+- Calendar scheduling (Calendar app)
+- Team communication (Slack app)
+- Custom integrations (your own apps)
+
+### Architecture
+
+```
+User Request
+    ↓
+App (e.g., Chat App)
+    ↓ (creates conversation with app_id)
+Inbox (stores with app association)
+    ↓
+Sensitive Loop (processes)
+    ↓
+Message Router (routes to correct app)
+    ↓
+App (receives response)
+    ↓
+User
+```
 
 ---
 

@@ -29,11 +29,20 @@ The energy level represents the AI's "effort quota" - a finite resource that mus
 ```
 HTTP Server (Port 3002)
     ↓ POST /message
-Sensitive Loop
+App Layer (Multi-Channel Architecture)
+├── Chat App (HTTP conversations)
+├── Future: Gmail App (email conversations)
+├── Future: Calendar App (event conversations)
+└── Future: Custom Apps (extensible)
+    ↓
+Sensitive Loop (Central Decision Engine)
 ├── Energy Regulator (Leaky Bucket: 100 max, -50 min)
 ├── Decision Engine (4 energy ranges with behaviors)
 ├── Reflection System (30s intervals, analyzes past convos)
 ├── Model Switcher (llama3.2:1b ↔ llama3.2:3b based on energy)
+├── App Registry (manages installed apps)
+├── Energy Tracker (per-app energy consumption)
+├── Message Router (routes responses to correct app)
 ├── LLM Integration (Ollama + OpenAI client)
 └── SQLite Database (conversation persistence)
 ```
@@ -296,18 +305,111 @@ Check system health.
 }
 ```
 
+### GET /apps
+List all installed apps with their configurations and energy metrics.
+
+**Response:**
+```json
+{
+  "apps": [
+    {
+      "id": "chat",
+      "name": "Chat App",
+      "type": "in-process",
+      "enabled": true,
+      "energyMetrics": {
+        "total": 1250.5,
+        "last24h": 450.2,
+        "last1h": 85.3,
+        "last1min": 5.2
+      }
+    }
+  ]
+}
+```
+
+### POST /apps/install
+Install a new app.
+
+**Request:**
+```json
+{
+  "id": "gmail",
+  "name": "Gmail App",
+  "type": "http",
+  "enabled": true,
+  "config": {
+    "url": "http://localhost:8080"
+  },
+  "hourlyEnergyBudget": 100,
+  "dailyEnergyBudget": 1000
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "appId": "gmail"
+}
+```
+
+### POST /apps/:appId/start
+Start an installed app.
+
+**Response:**
+```json
+{
+  "success": true,
+  "appId": "gmail"
+}
+```
+
+### POST /apps/:appId/stop
+Stop a running app.
+
+**Response:**
+```json
+{
+  "success": true,
+  "appId": "gmail"
+}
+```
+
+### DELETE /apps/:appId
+Uninstall an app.
+
+**Response:**
+```json
+{
+  "success": true,
+  "appId": "gmail"
+}
+```
+
 ## 🎨 Key Features
 
+### Core Capabilities
 - **Energy-Aware Processing**: Responses adapt to available energy
 - **User-Guided Energy Budgets**: Specify effort allocation per conversation
 - **Continuous Reflection**: System thinks about past conversations
 - **Model Switching**: Automatic optimization based on complexity needs
-- **MCP Integration**: Extensible tool system with unified interface
-- **HTTP Transport**: Connect to remote MCP servers via HTTP/HTTPS
-- **Tool Namespacing**: Automatic collision prevention for MCP tools
 - **Persistent Memory**: SQLite-backed conversation history
 - **Real-time Analytics**: System performance monitoring
 - **Adaptive Sleep**: Energy replenishment when idle
+
+### Multi-App Architecture (NEW!)
+- **App Registry**: Install, manage, and monitor multiple apps
+- **Conversation Isolation**: Each app only sees its own conversations
+- **Per-App Energy Tracking**: Monitor energy consumption by app with time windows
+- **Message Routing**: Automatic routing of responses to originating apps
+- **Extensible Design**: Easy to add new apps (Gmail, Calendar, etc.)
+- **App Lifecycle Management**: Install, start, stop, uninstall apps
+
+### MCP Integration
+- **Extensible Tool System**: Unified interface for MCP tools
+- **HTTP Transport**: Connect to remote MCP servers via HTTP/HTTPS
+- **Tool Namespacing**: Automatic collision prevention for MCP tools
 
 ## 📚 Documentation
 
@@ -323,9 +425,14 @@ Check system health.
 - **[System Specification](./2-specification.md)**: Detailed technical requirements
 - **[MCP Integration Spec](./3-mcp-integration-spec.md)**: MCP integration details
 - **[Energy Budget Spec](./5-energy-budget-spec.md)**: Energy budget specification
+- **[Apps Vision](./6-apps-vision.md)**: Multi-app architecture vision
+- **[Apps Specification](./7-apps-specification.md)**: Apps feature technical spec
 - **[HTTP MCP Spec](./HTTP-MCP-SPEC.md)**: HTTP transport specification
 
 ### Implementation Guides
+- **[Apps Implementation Plan](./8-apps-implementation-plan.md)**: Phased implementation plan
+- **[Apps Implementation Summary](./9-apps-implementation-summary.md)**: Implementation status
+- **[App-Conversation Binding](./10-app-conversation-binding.md)**: Message routing architecture
 - **[Unified MCP Tools](./UNIFIED-MCP-TOOLS.md)**: MCP tool system explained
 - **[Tool Namespacing](./TOOL-NAMESPACING.md)**: Tool naming and collision prevention
 - **[HTTP MCP Implementation](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md)**: HTTP transport guide
