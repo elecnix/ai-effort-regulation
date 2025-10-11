@@ -51,8 +51,9 @@ Sensitive Loop (Central Decision Engine)
 
 ### Prerequisites
 - **Node.js** 18+
-- **Ollama** running locally
-- **Llama models**: `ollama pull llama3.2:1b` and `ollama pull llama3.2:3b`
+- **LLM Provider** (choose one):
+  - **Ollama** (recommended for local/free testing) - Install from [ollama.ai](https://ollama.ai)
+  - **OpenRouter** (for production/cloud models) - Get API key from [openrouter.ai](https://openrouter.ai)
 
 ### Installation
 ```bash
@@ -62,7 +63,34 @@ npm install
 npm run build
 ```
 
-### Running
+### Configuration
+
+Create a `.env` file in the project root:
+
+```bash
+# Required: Ollama configuration (lowest cost option for testing)
+OLLAMA_BASE_URL=http://localhost:11434
+
+# Optional: OpenRouter configuration (for cloud models)
+# OPENROUTER_API_KEY=your_api_key_here
+
+# Optional: Server configuration
+PORT=6740
+MAX_MESSAGE_LENGTH=10000
+```
+
+### Running with Ollama (Recommended for Testing)
+
+**Ollama is the lowest-cost way to test the system** - it runs models locally for free!
+
+1. Install Ollama: https://ollama.ai
+2. Pull the required models:
+```bash
+ollama pull llama3.2:1b   # Fast model for low-energy operations
+ollama pull llama3.2:3b   # Better model for high-energy operations
+```
+
+3. Start the system:
 ```bash
 npm start
 ```
@@ -72,10 +100,23 @@ The system will start on `http://localhost:6740`:
 - **REST API**: http://localhost:6740/message, /stats, /conversations, /health
 - **WebSocket**: ws://localhost:6740/ws
 
-### Running with OpenRouter
+### Running with OpenRouter (Cloud Models)
+
+**OpenRouter can be used for production deployments** with access to many cloud models:
+
+1. Get an API key from [openrouter.ai](https://openrouter.ai)
+2. Add to `.env`: `OPENROUTER_API_KEY=your_key_here`
+3. Start with OpenRouter:
+
 ```bash
-npm start -- --provider openrouter --model x-ai/grok-4-fast
+npm start -- --provider openrouter --model anthropic/claude-3.5-sonnet
 ```
+
+Popular OpenRouter models:
+- `anthropic/claude-3.5-sonnet` - High quality, expensive
+- `x-ai/grok-beta` - Fast and capable
+- `meta-llama/llama-3.1-8b-instruct` - Good balance
+- `google/gemini-flash-1.5` - Fast and cheap
 
 ### Debug Mode
 
