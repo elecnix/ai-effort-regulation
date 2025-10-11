@@ -15,7 +15,9 @@
     "test:brainstorm": "npm run build && node dist/test/run-tests.js brainstorm",
     "test:snooze": "npm run build && node dist/test/run-tests.js snooze",
     "test:priorities": "npm run build && node dist/test/run-tests.js priorities",
-    "test:analyze": "npm run build && node dist/test/analyze-results.js"
+    "test:analyze": "npm run build && node dist/test/analyze-results.js",
+    "test:idle": "npm run build && node dist/test/idle-system.test.js",
+    "test:unit": "npm run build && node dist/test/subagent-isolated.test.js && node dist/test/subagent-energy.test.js && node dist/test/subagent-mcp.test.js && node dist/test/database-datetime.test.js"
   },
   "keywords": [
     "ai",
@@ -37,6 +39,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^0.0.66",
+    "@modelcontextprotocol/sdk": "^1.20.0",
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^12.4.1",
     "dotenv": "^17.2.3",

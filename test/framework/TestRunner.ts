@@ -87,6 +87,10 @@ export class TestRunner {
   private async executeScenario(scenario: TestScenario, result: TestResult): Promise<void> {
     const capturedRequestIds: string[] = [];
     
+    if (!scenario.steps) {
+      throw new Error(`Scenario ${scenario.name} has no steps`);
+    }
+    
     for (const step of scenario.steps) {
       console.log(`   ▶ ${step.description}`);
       

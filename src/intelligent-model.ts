@@ -154,7 +154,16 @@ export class IntelligentModel {
     // Energy consumption based on energy per prompt for the model
     const config = this.modelConsumption.find(t => t.model === model);
     const defaultConsumption = 10; // Depletion rate of 1 unit per second provides 10 seconds of runtime (10/100)
-    return config ? config.energyPerPrompt : defaultConsumption;
+    
+    if (!config) {
+      // For unknown models (e.g., OpenRouter models), return default
+      if (this.debugMode) {
+        console.log(`⚠️ Unknown model "${model}", using default energy consumption: ${defaultConsumption}`);
+      }
+      return defaultConsumption;
+    }
+    
+    return config.energyPerPrompt;
   }
 
   /**
@@ -285,6 +294,72 @@ export class IntelligentModel {
               }
             },
             required: ['requestId', 'minutes']
+          }
+        }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'mcp_add_server',
+          description: 'Request the MCP sub-agent to add and configure a new MCP server. The sub-agent will handle the connection asynchronously.',
+          parameters: {
+            type: 'object',
+            properties: {
+              serverId: {
+                type: 'string',
+                description: 'Unique identifier for the server (e.g., "filesystem", "github")'
+              },
+              serverName: {
+                type: 'string',
+                description: 'Human-readable name for the server'
+              },
+              command: {
+                type: 'string',
+                description: 'Command to run the MCP server (e.g., "npx", "node")'
+              },
+              args: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Arguments for the command (e.g., ["-y", "@modelcontextprotocol/server-filesystem", "./data"])'
+              }
+            },
+            required: ['serverId', 'serverName', 'command', 'args']
+          }
+        }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'mcp_list_servers',
+          description: 'List all configured MCP servers and their connection status',
+          parameters: {
+            type: 'object',
+            properties: {}
+          }
+        }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'mcp_call_tool',
+          description: 'Call a tool from a connected MCP server. Use this to invoke MCP tools that have been discovered.',
+          parameters: {
+            type: 'object',
+            properties: {
+              serverId: {
+                type: 'string',
+                description: 'The ID of the MCP server that provides this tool'
+              },
+              toolName: {
+                type: 'string',
+                description: 'The name of the tool to call'
+              },
+              arguments: {
+                type: 'object',
+                description: 'Arguments to pass to the tool (as a JSON object)'
+              }
+            },
+            required: ['serverId', 'toolName', 'arguments']
           }
         }
       },

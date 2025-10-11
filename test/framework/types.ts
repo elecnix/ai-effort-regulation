@@ -39,12 +39,13 @@ export interface TestStep {
 export interface TestScenario {
   name: string;
   description: string;
-  steps: TestStep[];
-  expectedBehavior: {
+  steps?: TestStep[];
+  expectedBehavior?: {
     energyPattern: 'stable' | 'declining' | 'recovering';
     conversationEnd: 'natural' | 'timeout' | 'snooze' | 'mixed';
     responseCount: number | 'multiple';
   };
+  run?: (client: any) => Promise<boolean>;
 }
 
 export interface EnergyDataPoint {
@@ -95,6 +96,9 @@ export interface ConversationResponse {
   metadata: {
     totalEnergyConsumed: number;
     sleepCycles: number;
+    energyBudget?: number | null;
+    energyBudgetRemaining?: number | null;
+    budgetStatus?: 'within' | 'exceeded' | 'depleted';
   };
   ended?: boolean;
   endedReason?: string;
