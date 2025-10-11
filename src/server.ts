@@ -2,7 +2,9 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import rateLimit from 'express-rate-limit';
 import { Inbox } from './inbox';
-// Load environment variables
+import path from 'path';
+import { WebSocketServer as WSServer } from 'ws';
+import { WebSocketServer } from './websocket-server';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -264,8 +266,34 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
 
 export async function startServer() {
   const port = await findAvailablePort(DEFAULT_PORT);
-  app.listen(port, () => {
+  const server = app.listen(port, () => {
     console.log(`HTTP Server listening on port ${port}`);
   });
-  return port;
+
+  const wss = new WSServer({ server, path: '/ws' });
+  const wsServer = new WebSocketServer(wss);
+  
+  (global as any).wsServer = wsServer;
+  console.log(`WebSocket Server listening on port ${port}/ws`);
+
+  app.use(express.static(path.join(__dirname, '../../ui/dist')));
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || 
+        req.path.startsWith('/conversations') || 
+        req.path.startsWith('/stats') || 
+        req.path.startsWith('/health') ||
+        req.path.startsWith('/message')) {
+      next();
+    } else {
+      const indexPath = path.join(__dirname, '../../ui/dist/index.html');
+      res.sendFile(indexPath, (err) => {
+        if (err) {
+          next();
+        }
+      });
+    }
+  });
+
+  return { port, server, wsServer };
 }

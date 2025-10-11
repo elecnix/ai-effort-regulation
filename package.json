@@ -4,20 +4,23 @@
   "description": "AI effort regulation demo with Ollama",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/src/index.js",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "tsc",
+    "build:frontend": "cd ui && npm run build",
+    "start": "npm run build && node dist/src/index.js",
     "dev": "tsc && node dist/src/index.js",
+    "dev:frontend": "cd ui && npm run dev",
     "debug": "tsc && node dist/src/index.js --debug",
     "check-build": "npm run build && echo '✅ Build successful!'",
     "pre-commit": "npm run check-build",
-    "test": "npm run build && node dist/test/run-tests.js all",
-    "test:simple": "npm run build && node dist/test/run-tests.js simple",
-    "test:brainstorm": "npm run build && node dist/test/run-tests.js brainstorm",
-    "test:snooze": "npm run build && node dist/test/run-tests.js snooze",
-    "test:priorities": "npm run build && node dist/test/run-tests.js priorities",
-    "test:analyze": "npm run build && node dist/test/analyze-results.js",
-    "test:idle": "npm run build && node dist/test/idle-system.test.js",
-    "test:unit": "npm run build && node dist/test/subagent-isolated.test.js && node dist/test/subagent-energy.test.js && node dist/test/subagent-mcp.test.js && node dist/test/database-datetime.test.js"
+    "test": "npm run build:backend && node dist/test/run-tests.js all",
+    "test:simple": "npm run build:backend && node dist/test/run-tests.js simple",
+    "test:brainstorm": "npm run build:backend && node dist/test/run-tests.js brainstorm",
+    "test:snooze": "npm run build:backend && node dist/test/run-tests.js snooze",
+    "test:priorities": "npm run build:backend && node dist/test/run-tests.js priorities",
+    "test:analyze": "npm run build:backend && node dist/test/analyze-results.js",
+    "test:idle": "npm run build:backend && node dist/test/idle-system.test.js",
+    "test:unit": "npm run build:backend && node dist/test/subagent-isolated.test.js && node dist/test/subagent-energy.test.js && node dist/test/subagent-mcp.test.js && node dist/test/database-datetime.test.js"
   },
   "keywords": [
     "ai",
@@ -33,6 +36,7 @@
     "@types/node": "^20.10.0",
     "@types/node-fetch": "^2.6.11",
     "@types/uuid": "^9.0.7",
+    "@types/ws": "^8.18.1",
     "nodemon": "^3.0.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
@@ -48,6 +52,7 @@
     "fs-extra": "^11.2.0",
     "node-fetch": "^2.7.0",
     "openai": "^6.1.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "ws": "^8.18.3"
   }
 }
