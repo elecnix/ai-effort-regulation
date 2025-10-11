@@ -1,223 +1,225 @@
 # Documentation Index
 
-Complete guide to all documentation in the AI Effort Regulation project.
+**Version**: 1.1  
+**Last Updated**: October 11, 2025  
+**Organization**: Cleaned up and reorganized for clarity
 
-## Getting Started
+## 📚 Documentation Structure
 
-**New to the project?** Start here:
+The documentation has been organized into a clear, logical structure:
 
-1. **[README.md](./README.md)** - Project overview and quick start
-2. **[USER-GUIDE.md](./USER-GUIDE.md)** - Comprehensive user guide
-3. **[QUICK-REFERENCE.md](./QUICK-REFERENCE.md)** - Common commands and patterns
-
-## User Documentation
-
-### Essential Guides
-
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[USER-GUIDE.md](./USER-GUIDE.md)** | Complete user guide with examples | All users |
-| **[QUICK-REFERENCE.md](./QUICK-REFERENCE.md)** | Fast reference for common tasks | All users |
-| **[FEATURES.md](./FEATURES.md)** | Complete feature list and status | All users |
-| **[README.md](./README.md)** | Project overview and quick start | New users |
-
-### Feature-Specific Guides
-
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[ENERGY-BUDGET-QUICKSTART.md](./ENERGY-BUDGET-QUICKSTART.md)** | Energy budget feature guide | Users wanting to control AI effort |
-| **[MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md)** | Upgrading from previous versions | Existing users |
-| **[RELEASE-NOTES.md](./RELEASE-NOTES.md)** | Latest features and changes | All users |
-
-## Technical Documentation
-
-### System Specifications
-
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[2-specification.md](./2-specification.md)** | Core system specification | Developers, architects |
-| **[3-mcp-integration-spec.md](./3-mcp-integration-spec.md)** | MCP integration specification | Developers, integrators |
-| **[5-energy-budget-spec.md](./5-energy-budget-spec.md)** | Energy budget specification | Developers |
-| **[6-apps-vision.md](./6-apps-vision.md)** | Apps feature vision | All stakeholders |
-| **[7-apps-specification.md](./7-apps-specification.md)** | Apps feature technical spec | Developers, architects |
-| **[HTTP-MCP-SPEC.md](./HTTP-MCP-SPEC.md)** | HTTP transport specification | Developers, integrators |
-
-### Implementation Guides
-
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[UNIFIED-MCP-TOOLS.md](./UNIFIED-MCP-TOOLS.md)** | MCP tool system explained | Developers |
-| **[TOOL-NAMESPACING.md](./TOOL-NAMESPACING.md)** | Tool naming and collision prevention | Developers, integrators |
-| **[HTTP-MCP-IMPLEMENTATION-SUMMARY.md](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md)** | HTTP transport implementation | Developers |
-| **[ENERGY-BUDGET-IMPLEMENTATION.md](./ENERGY-BUDGET-IMPLEMENTATION.md)** | Energy budget implementation | Developers |
-| **[MCP-INTEGRATION-COMPLETE.md](./MCP-INTEGRATION-COMPLETE.md)** | MCP integration summary | Developers |
-| **[MCP-IMPLEMENTATION-COMPLETE.md](./MCP-IMPLEMENTATION-COMPLETE.md)** | MCP sub-agent implementation | Developers |
-| **[ENERGY-TRACKING-SUMMARY.md](./ENERGY-TRACKING-SUMMARY.md)** | Energy tracking details | Developers |
-| **[IMPLEMENTATION-SUMMARY.md](./IMPLEMENTATION-SUMMARY.md)** | Unified tools implementation | Developers |
-| **[MCP-SPEC-VS-IMPLEMENTATION.md](./MCP-SPEC-VS-IMPLEMENTATION.md)** | Spec vs implementation comparison | Developers |
-| **[8-apps-implementation-plan.md](./8-apps-implementation-plan.md)** | Apps feature implementation plan | Developers, project managers |
-| **[9-apps-implementation-summary.md](./9-apps-implementation-summary.md)** | Apps feature implementation status | All stakeholders |
-| **[10-app-conversation-binding.md](./10-app-conversation-binding.md)** | App-conversation binding architecture | Developers, architects |
-
-### Development Documentation
-
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[SUB-AGENT-STATUS.md](./SUB-AGENT-STATUS.md)** | Sub-agent development progress | Developers |
-| **[SUB-AGENT-TEST-GUIDE.md](./SUB-AGENT-TEST-GUIDE.md)** | Sub-agent testing guide | Developers, QA |
-
-### Historical Documentation
-
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **[1-prompt.md](./1-prompt.md)** | Original project requirements | Historical reference |
-| **[4-mcp-implementation-plan.md](./4-mcp-implementation-plan.md)** | MCP implementation roadmap | Historical reference |
-
-## Documentation by Use Case
-
-### I want to...
-
-#### Use the System
-
-1. Start with **[README.md](./README.md)** for installation
-2. Read **[USER-GUIDE.md](./USER-GUIDE.md)** for comprehensive usage
-3. Keep **[QUICK-REFERENCE.md](./QUICK-REFERENCE.md)** handy for commands
-
-#### Control AI Effort
-
-1. Read **[ENERGY-BUDGET-QUICKSTART.md](./ENERGY-BUDGET-QUICKSTART.md)**
-2. Check examples in **[USER-GUIDE.md](./USER-GUIDE.md)** (Energy Budget section)
-3. Reference **[5-energy-budget-spec.md](./5-energy-budget-spec.md)** for details
-
-#### Integrate MCP Servers
-
-1. Read **[UNIFIED-MCP-TOOLS.md](./UNIFIED-MCP-TOOLS.md)** for overview
-2. Check **[HTTP-MCP-IMPLEMENTATION-SUMMARY.md](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md)** for HTTP setup
-3. Reference **[TOOL-NAMESPACING.md](./TOOL-NAMESPACING.md)** for naming
-4. See **[USER-GUIDE.md](./USER-GUIDE.md)** (MCP Integration section) for examples
-
-#### Upgrade from Previous Version
-
-1. Read **[MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md)**
-2. Check **[RELEASE-NOTES.md](./RELEASE-NOTES.md)** for changes
-3. Review **[FEATURES.md](./FEATURES.md)** for new capabilities
-
-#### Understand the Architecture
-
-1. Start with **[2-specification.md](./2-specification.md)**
-2. Read **[3-mcp-integration-spec.md](./3-mcp-integration-spec.md)** for MCP
-3. Check **[MCP-INTEGRATION-COMPLETE.md](./MCP-INTEGRATION-COMPLETE.md)** for implementation
-
-#### Develop or Extend
-
-1. Read **[2-specification.md](./2-specification.md)** for system design
-2. Check **[IMPLEMENTATION-SUMMARY.md](./IMPLEMENTATION-SUMMARY.md)** for code structure
-3. Review relevant implementation guides for specific features
-4. See **[SUB-AGENT-TEST-GUIDE.md](./SUB-AGENT-TEST-GUIDE.md)** for testing
-
-#### Troubleshoot Issues
-
-1. Check **[USER-GUIDE.md](./USER-GUIDE.md)** (Troubleshooting section)
-2. Reference **[QUICK-REFERENCE.md](./QUICK-REFERENCE.md)** (Troubleshooting section)
-3. Review **[MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md)** if upgrading
-
-## Documentation by Feature
-
-### Core Features
-
-| Feature | User Guide | Technical Spec | Implementation |
-|---------|-----------|----------------|----------------|
-| **Energy Regulation** | [USER-GUIDE.md](./USER-GUIDE.md) | [2-specification.md](./2-specification.md) | Built-in |
-| **Energy Budgets** | [ENERGY-BUDGET-QUICKSTART.md](./ENERGY-BUDGET-QUICKSTART.md) | [5-energy-budget-spec.md](./5-energy-budget-spec.md) | [ENERGY-BUDGET-IMPLEMENTATION.md](./ENERGY-BUDGET-IMPLEMENTATION.md) |
-| **Model Switching** | [USER-GUIDE.md](./USER-GUIDE.md) | [2-specification.md](./2-specification.md) | Built-in |
-| **Reflection System** | [USER-GUIDE.md](./USER-GUIDE.md) | [2-specification.md](./2-specification.md) | Built-in |
-| **Conversation Management** | [USER-GUIDE.md](./USER-GUIDE.md) | [2-specification.md](./2-specification.md) | Built-in |
-
-### MCP Features
-
-| Feature | User Guide | Technical Spec | Implementation |
-|---------|-----------|----------------|----------------|
-| **Unified MCP Tools** | [USER-GUIDE.md](./USER-GUIDE.md) | [3-mcp-integration-spec.md](./3-mcp-integration-spec.md) | [UNIFIED-MCP-TOOLS.md](./UNIFIED-MCP-TOOLS.md) |
-| **HTTP Transport** | [USER-GUIDE.md](./USER-GUIDE.md) | [HTTP-MCP-SPEC.md](./HTTP-MCP-SPEC.md) | [HTTP-MCP-IMPLEMENTATION-SUMMARY.md](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md) |
-| **Tool Namespacing** | [USER-GUIDE.md](./USER-GUIDE.md) | [3-mcp-integration-spec.md](./3-mcp-integration-spec.md) | [TOOL-NAMESPACING.md](./TOOL-NAMESPACING.md) |
-| **MCP Sub-Agent** | [USER-GUIDE.md](./USER-GUIDE.md) | [3-mcp-integration-spec.md](./3-mcp-integration-spec.md) | [MCP-IMPLEMENTATION-COMPLETE.md](./MCP-IMPLEMENTATION-COMPLETE.md) |
-
-## Quick Navigation
-
-### By Document Type
-
-- **Guides**: [USER-GUIDE.md](./USER-GUIDE.md), [QUICK-REFERENCE.md](./QUICK-REFERENCE.md), [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md)
-- **Specifications**: [2-specification.md](./2-specification.md), [3-mcp-integration-spec.md](./3-mcp-integration-spec.md), [5-energy-budget-spec.md](./5-energy-budget-spec.md), [HTTP-MCP-SPEC.md](./HTTP-MCP-SPEC.md)
-- **Implementation**: [UNIFIED-MCP-TOOLS.md](./UNIFIED-MCP-TOOLS.md), [HTTP-MCP-IMPLEMENTATION-SUMMARY.md](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md), [ENERGY-BUDGET-IMPLEMENTATION.md](./ENERGY-BUDGET-IMPLEMENTATION.md)
-- **Reference**: [FEATURES.md](./FEATURES.md), [QUICK-REFERENCE.md](./QUICK-REFERENCE.md), [README.md](./README.md)
-- **Release**: [RELEASE-NOTES.md](./RELEASE-NOTES.md), [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md)
-
-### By Audience
-
-- **End Users**: [README.md](./README.md), [USER-GUIDE.md](./USER-GUIDE.md), [QUICK-REFERENCE.md](./QUICK-REFERENCE.md), [ENERGY-BUDGET-QUICKSTART.md](./ENERGY-BUDGET-QUICKSTART.md)
-- **Integrators**: [USER-GUIDE.md](./USER-GUIDE.md), [HTTP-MCP-IMPLEMENTATION-SUMMARY.md](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md), [TOOL-NAMESPACING.md](./TOOL-NAMESPACING.md)
-- **Developers**: All technical documentation and implementation guides
-- **Architects**: [2-specification.md](./2-specification.md), [3-mcp-integration-spec.md](./3-mcp-integration-spec.md), [FEATURES.md](./FEATURES.md)
-
-## Documentation Standards
-
-All documentation follows these standards:
-
-- **Markdown Format**: Easy to read and version control
-- **Clear Structure**: Headings, tables, code blocks
-- **Examples**: Practical, copy-pastable examples
-- **Cross-References**: Links to related documentation
-- **Version Info**: Last updated date and version
-- **Status Indicators**: ✅ for completed features
-
-## Contributing to Documentation
-
-When adding or updating documentation:
-
-1. **Choose the right document**: See structure above
-2. **Follow the format**: Match existing style
-3. **Add cross-references**: Link to related docs
-4. **Update this index**: Add new documents here
-5. **Update README**: Add to documentation section
-6. **Test examples**: Ensure code examples work
-7. **Update version**: Add last updated date
-
-## Documentation Maintenance
-
-### Regular Updates
-
-- **RELEASE-NOTES.md**: Updated with each release
-- **FEATURES.md**: Updated when features change status
-- **USER-GUIDE.md**: Updated when API or usage changes
-- **QUICK-REFERENCE.md**: Updated when commands change
-
-### Periodic Reviews
-
-- **Quarterly**: Review all user documentation for accuracy
-- **Per Release**: Update technical documentation
-- **As Needed**: Update implementation guides when code changes
-
-## External Resources
-
-- **GitHub Repository**: https://github.com/elecnix/ai-effort-regulation
-- **Issues**: https://github.com/elecnix/ai-effort-regulation/issues
-- **Discussions**: https://github.com/elecnix/ai-effort-regulation/discussions
-
-## Document Statistics
-
-- **Total Documents**: 25+
-- **User Documentation**: 6 documents
-- **Technical Specifications**: 4 documents
-- **Implementation Guides**: 9 documents
-- **Development Documentation**: 2 documents
-- **Historical Documentation**: 2 documents
-
-## Last Updated
-
-**Date**: October 11, 2025  
-**Version**: 1.0  
-**Status**: Complete ✅
+```
+/                           # Essential user-facing docs (7 files)
+├── docs/technical/         # Technical specifications (5 files)
+├── docs/testing/           # Testing documentation (5 files)
+└── docs/archive/           # Historical records (23 files)
+```
 
 ---
 
-**Need help finding something?** Check the "I want to..." section above or search the repository.
+## 🚀 Essential Documentation (Root Directory)
+
+### For All Users
+
+| Document | Purpose |
+|----------|---------|
+| **[README.md](./README.md)** | Main entry point, quick start, API reference |
+| **[USER-GUIDE.md](./USER-GUIDE.md)** | Comprehensive user guide with examples |
+| **[QUICK-REFERENCE.md](./QUICK-REFERENCE.md)** | Fast reference for common tasks |
+| **[FEATURES.md](./FEATURES.md)** | Complete feature list and status |
+
+### For Upgrading Users
+
+| Document | Purpose |
+|----------|---------|
+| **[RELEASE-NOTES.md](./RELEASE-NOTES.md)** | Latest features and changes (v1.1) |
+| **[MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md)** | Upgrade instructions and breaking changes |
+
+### Meta
+
+| Document | Purpose |
+|----------|---------|
+| **[DOCUMENTATION-INDEX.md](./DOCUMENTATION-INDEX.md)** | This file - documentation map |
+
+---
+
+## 🔧 Technical Documentation
+
+Located in `docs/technical/`
+
+| Document | Purpose | Audience |
+|----------|---------|----------|
+| **[specification.md](./docs/technical/specification.md)** | Core system specification | Developers, architects |
+| **[mcp-integration-spec.md](./docs/technical/mcp-integration-spec.md)** | MCP integration specification | Developers, integrators |
+| **[energy-budget-spec.md](./docs/technical/energy-budget-spec.md)** | Energy budget specification | Developers |
+| **[apps-specification.md](./docs/technical/apps-specification.md)** | Apps feature technical spec | Developers, architects |
+| **[http-mcp-spec.md](./docs/technical/http-mcp-spec.md)** | HTTP transport specification | Developers, integrators |
+
+---
+
+## 🧪 Testing Documentation
+
+Located in `docs/testing/`
+
+| Document | Purpose |
+|----------|---------|
+| **[test-report.md](./docs/testing/test-report.md)** | Initial comprehensive testing |
+| **[edge-case-test-report.md](./docs/testing/edge-case-test-report.md)** | 40 edge case tests and findings |
+| **[post-merge-test-results.md](./docs/testing/post-merge-test-results.md)** | Post-merge verification |
+| **[testing-summary.md](./docs/testing/testing-summary.md)** | Overall testing summary |
+| **[v1.1-release-summary.md](./docs/testing/v1.1-release-summary.md)** | v1.1 release comprehensive summary |
+
+---
+
+## 📦 Archived Documentation
+
+Located in `docs/archive/` - Historical records preserved for reference
+
+### Implementation History (`docs/archive/implementation/`)
+
+Records of how features were implemented (11 files):
+- Original prompt and requirements
+- MCP implementation plan and summary
+- Apps implementation plan and summary
+- Energy budget implementation details
+- Critical fixes implementation
+- And more...
+
+### Status Reports (`docs/archive/status/`)
+
+Historical status reports (4 files):
+- Sub-agent status
+- MCP spec vs implementation
+- Energy tracking summary
+- HTTP MCP implementation summary
+
+### Old Guides (`docs/archive/guides/`)
+
+Superseded by main documentation (5 files):
+- Energy budget quickstart
+- Sub-agent test guide
+- Tool namespacing guide
+- Unified MCP tools guide
+- New features quick reference
+
+### Vision Documents (`docs/archive/vision/`)
+
+Original vision documents (1 file):
+- Apps vision document
+
+---
+
+## 🎯 Quick Start Paths
+
+### New User
+1. [README.md](./README.md) - Installation and quick start
+2. [USER-GUIDE.md](./USER-GUIDE.md) - Learn how to use the system
+3. [QUICK-REFERENCE.md](./QUICK-REFERENCE.md) - Keep handy for commands
+
+### Upgrading from v1.0
+1. [RELEASE-NOTES.md](./RELEASE-NOTES.md) - See what's new in v1.1
+2. [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md) - Follow upgrade steps
+3. [FEATURES.md](./FEATURES.md) - Explore new capabilities
+
+### Developer
+1. [docs/technical/specification.md](./docs/technical/specification.md) - System design
+2. [docs/technical/mcp-integration-spec.md](./docs/technical/mcp-integration-spec.md) - MCP integration
+3. [docs/testing/](./docs/testing/) - Test documentation
+
+### Troubleshooting
+1. [USER-GUIDE.md](./USER-GUIDE.md) - Check troubleshooting section
+2. [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md) - If upgrading
+3. [docs/testing/edge-case-test-report.md](./docs/testing/edge-case-test-report.md) - Known issues
+
+---
+
+## 📊 Documentation Statistics
+
+| Category | Count | Location |
+|----------|-------|----------|
+| Essential Docs | 7 | Root directory |
+| Technical Specs | 5 | `docs/technical/` |
+| Testing Docs | 5 | `docs/testing/` |
+| Archived Docs | 23 | `docs/archive/` |
+| **Total** | **40** | - |
+
+---
+
+## 🔍 Finding What You Need
+
+### By Task
+
+**I want to...**
+
+- **Get started** → [README.md](./README.md)
+- **Learn the system** → [USER-GUIDE.md](./USER-GUIDE.md)
+- **Find a command** → [QUICK-REFERENCE.md](./QUICK-REFERENCE.md)
+- **See all features** → [FEATURES.md](./FEATURES.md)
+- **Upgrade** → [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md)
+- **Understand architecture** → [docs/technical/specification.md](./docs/technical/specification.md)
+- **Integrate MCP** → [docs/technical/mcp-integration-spec.md](./docs/technical/mcp-integration-spec.md)
+- **See test results** → [docs/testing/](./docs/testing/)
+- **Read history** → [docs/archive/](./docs/archive/)
+
+### By Audience
+
+**End Users**
+- [README.md](./README.md)
+- [USER-GUIDE.md](./USER-GUIDE.md)
+- [QUICK-REFERENCE.md](./QUICK-REFERENCE.md)
+- [FEATURES.md](./FEATURES.md)
+
+**Developers**
+- [docs/technical/](./docs/technical/) - All technical specs
+- [docs/testing/](./docs/testing/) - Test documentation
+- [USER-GUIDE.md](./USER-GUIDE.md) - API usage
+
+**Operations**
+- [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md) - Upgrade procedures
+- [README.md](./README.md) - Deployment instructions
+- [docs/testing/v1.1-release-summary.md](./docs/testing/v1.1-release-summary.md) - Release details
+
+---
+
+## 📝 Documentation Standards
+
+All documentation follows these standards:
+
+- ✅ **Markdown Format** - Easy to read and version control
+- ✅ **Clear Structure** - Headings, tables, code blocks
+- ✅ **Practical Examples** - Copy-pastable code
+- ✅ **Cross-References** - Links to related docs
+- ✅ **Version Info** - Last updated date
+- ✅ **Status Indicators** - Clear feature status
+
+---
+
+## 🔄 Recent Changes (v1.1)
+
+### Documentation Cleanup
+- Moved 31 files to organized structure
+- Root directory: 38 files → 7 files
+- Created logical organization by purpose
+- All historical records preserved in archive
+
+### New Documentation
+- [RELEASE-NOTES.md](./RELEASE-NOTES.md) - v1.1 release notes
+- [docs/testing/v1.1-release-summary.md](./docs/testing/v1.1-release-summary.md) - Comprehensive summary
+- Updated [MIGRATION-GUIDE.md](./MIGRATION-GUIDE.md) - v1.1 upgrade guide
+
+---
+
+## 💡 Tips
+
+- **Start with README** if you're new
+- **Bookmark QUICK-REFERENCE** for daily use
+- **Check RELEASE-NOTES** before upgrading
+- **Read MIGRATION-GUIDE** when upgrading
+- **Explore docs/technical/** for deep dives
+- **Check docs/testing/** for test results
+
+---
+
+**Need help?** Start with [README.md](./README.md) or [USER-GUIDE.md](./USER-GUIDE.md)
+
+**Last Updated**: October 11, 2025 | **Version**: 1.1 | **Status**: ✅ Complete
