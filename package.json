@@ -17,7 +17,8 @@
     "test:priorities": "npm run build && node dist/test/run-tests.js priorities",
     "test:analyze": "npm run build && node dist/test/analyze-results.js",
     "test:idle": "npm run build && node dist/test/idle-system.test.js",
-    "test:unit": "npm run build && node dist/test/subagent-isolated.test.js && node dist/test/subagent-energy.test.js && node dist/test/subagent-mcp.test.js && node dist/test/database-datetime.test.js"
+    "test:unit": "npm run build && node dist/test/subagent-isolated.test.js && node dist/test/subagent-energy.test.js && node dist/test/subagent-mcp.test.js && node dist/test/database-datetime.test.js",
+    "test:approval": "npm run build && node --test dist/test/approval-system.test.js"
   },
   "keywords": [
     "ai",
@@ -30,7 +31,7 @@
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/fs-extra": "^11.0.4",
-    "@types/node": "^20.10.0",
+    "@types/node": "^20.19.20",
     "@types/node-fetch": "^2.6.11",
     "@types/uuid": "^9.0.7",
     "nodemon": "^3.0.2",

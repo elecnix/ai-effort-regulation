@@ -45,7 +45,7 @@ export const messageQueue: Message[] = [];
 
 app.post('/message', function(req: express.Request, res: express.Response): void {
   try {
-    const { content, id, energyBudget } = req.body;
+    const { content, id, energyBudget, approvalResponse } = req.body;
 
     // Input validation
     if (!content || typeof content !== 'string') {
@@ -92,6 +92,37 @@ app.post('/message', function(req: express.Request, res: express.Response): void
       return;
     }
 
+    // Handle approval response if present
+    const globalLoop = global.sensitiveLoop;
+    if (approvalResponse && globalLoop && globalLoop.inbox) {
+      const { approved, newBudget, budgetChange, feedback } = approvalResponse;
+      
+      // Update approval status
+      if (approved !== undefined) {
+        const status = approved ? 'approved' : 'rejected';
+        globalLoop.inbox.updateApprovalStatus(messageId, null, status, feedback);
+        console.log(`${approved ? '✅' : '❌'} Approval ${status} for ${messageId}${feedback ? `: ${feedback}` : ''}`);
+      }
+      
+      // Apply budget changes
+      if (newBudget !== undefined && newBudget !== null) {
+        if (typeof newBudget === 'number' && newBudget >= 0) {
+          globalLoop.inbox.setEnergyBudget(messageId, newBudget);
+          console.log(`💰 Budget set to ${newBudget} for ${messageId}`);
+        }
+      } else if (budgetChange !== undefined && budgetChange !== null) {
+        if (typeof budgetChange === 'number') {
+          const conversation = globalLoop.inbox.getConversation(messageId);
+          if (conversation) {
+            const currentBudget = conversation.metadata.energyBudget || 0;
+            const updatedBudget = Math.max(0, currentBudget + budgetChange);
+            globalLoop.inbox.setEnergyBudget(messageId, updatedBudget);
+            console.log(`💰 Budget adjusted by ${budgetChange} (${currentBudget} → ${updatedBudget}) for ${messageId}`);
+          }
+        }
+      }
+    }
+
     const message: Message = {
       id: messageId,
       content: sanitizedContent,
@@ -103,7 +134,6 @@ app.post('/message', function(req: express.Request, res: express.Response): void
     messageQueue.push(message);
 
     // Save the user message to database immediately
-    const globalLoop = global.sensitiveLoop;
     if (globalLoop && globalLoop.inbox) {
       globalLoop.inbox.addResponse(messageId, sanitizedContent, '', 0, '', message.energyBudget);
       // Also add to in-memory pending messages so the loop detects it
@@ -194,6 +224,121 @@ app.get('/conversations/:requestId', function(req: express.Request, res: express
     res.json(conversation);
   } catch (error) {
     console.error('Error retrieving conversation:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Get all approvals for a conversation
+app.get('/conversations/:requestId/approvals', function(req: express.Request, res: express.Response): void {
+  try {
+    const { requestId } = req.params;
+    if (!requestId) {
+      res.status(400).json({ error: 'requestId parameter is required' });
+      return;
+    }
+    
+    const globalLoop = global.sensitiveLoop;
+    if (!globalLoop || !globalLoop.inbox) {
+      res.status(500).json({ error: 'System not initialized' });
+      return;
+    }
+    
+    const approvals = globalLoop.inbox.getAllApprovals(requestId);
+    
+    res.json({
+      requestId,
+      approvals
+    });
+  } catch (error) {
+    console.error('Error retrieving approvals:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Approve a pending approval request
+app.post('/conversations/:requestId/approve', function(req: express.Request, res: express.Response): void {
+  try {
+    const { requestId } = req.params;
+    const { responseId, feedback, newBudget, budgetChange } = req.body;
+    
+    if (!requestId) {
+      res.status(400).json({ error: 'requestId parameter is required' });
+      return;
+    }
+    
+    const globalLoop = global.sensitiveLoop;
+    if (!globalLoop || !globalLoop.inbox) {
+      res.status(500).json({ error: 'System not initialized' });
+      return;
+    }
+    
+    // Update approval status
+    globalLoop.inbox.updateApprovalStatus(requestId, responseId || null, 'approved', feedback);
+    
+    // Apply budget changes if specified
+    let budgetUpdated = false;
+    let finalBudget = null;
+    
+    if (newBudget !== undefined && newBudget !== null) {
+      if (typeof newBudget === 'number' && newBudget >= 0) {
+        globalLoop.inbox.setEnergyBudget(requestId, newBudget);
+        budgetUpdated = true;
+        finalBudget = newBudget;
+      }
+    } else if (budgetChange !== undefined && budgetChange !== null) {
+      if (typeof budgetChange === 'number') {
+        const conversation = globalLoop.inbox.getConversation(requestId);
+        if (conversation) {
+          const currentBudget = conversation.metadata.energyBudget || 0;
+          const updatedBudget = Math.max(0, currentBudget + budgetChange);
+          globalLoop.inbox.setEnergyBudget(requestId, updatedBudget);
+          budgetUpdated = true;
+          finalBudget = updatedBudget;
+        }
+      }
+    }
+    
+    res.json({
+      status: 'approved',
+      responseId: responseId || 'latest',
+      budgetUpdated,
+      newBudget: finalBudget
+    });
+  } catch (error) {
+    console.error('Error approving request:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Reject a pending approval request
+app.post('/conversations/:requestId/reject', function(req: express.Request, res: express.Response): void {
+  try {
+    const { requestId } = req.params;
+    const { responseId, feedback } = req.body;
+    
+    if (!requestId) {
+      res.status(400).json({ error: 'requestId parameter is required' });
+      return;
+    }
+    
+    const globalLoop = global.sensitiveLoop;
+    if (!globalLoop || !globalLoop.inbox) {
+      res.status(500).json({ error: 'System not initialized' });
+      return;
+    }
+    
+    // Update approval status
+    globalLoop.inbox.updateApprovalStatus(requestId, responseId || null, 'rejected', feedback);
+    
+    res.json({
+      status: 'rejected',
+      responseId: responseId || 'latest'
+    });
+  } catch (error) {
+    console.error('Error rejecting request:', error);
     res.status(500).json({ error: 'Internal server error' });
     return;
   }

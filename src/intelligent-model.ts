@@ -363,6 +363,74 @@ export class IntelligentModel {
           }
         }
       },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'respond_with_approval',
+          description: 'Send a response that requires user approval before being finalized. Use this when you want to propose an action or response that should be reviewed by the user first, especially for potentially risky or significant actions.',
+          parameters: {
+            type: 'object',
+            properties: {
+              requestId: {
+                type: 'string',
+                description: 'The conversation UUID extracted from "Conversation UUID: message" format'
+              },
+              content: {
+                type: 'string',
+                description: 'YOUR proposed response or action that requires approval. Explain what you plan to do and why it needs approval.'
+              },
+              energyBudget: {
+                type: 'number',
+                description: 'Optional: suggested energy budget for the approval workflow if additional energy is needed'
+              }
+            },
+            required: ['requestId', 'content']
+          }
+        }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'set_budget',
+          description: 'Set or update the energy budget for a conversation. This replaces any existing budget with the new value.',
+          parameters: {
+            type: 'object',
+            properties: {
+              requestId: {
+                type: 'string',
+                description: 'The conversation UUID'
+              },
+              budget: {
+                type: 'number',
+                description: 'New budget value in energy units (must be >= 0)',
+                minimum: 0
+              }
+            },
+            required: ['requestId', 'budget']
+          }
+        }
+      },
+      {
+        type: 'function' as const,
+        function: {
+          name: 'adjust_budget',
+          description: 'Adjust the energy budget for a conversation by adding or subtracting energy units from the current budget.',
+          parameters: {
+            type: 'object',
+            properties: {
+              requestId: {
+                type: 'string',
+                description: 'The conversation UUID'
+              },
+              delta: {
+                type: 'number',
+                description: 'Amount to add (positive) or subtract (negative) from current budget'
+              }
+            },
+            required: ['requestId', 'delta']
+          }
+        }
+      },
     ];
 
     // Filter tools based on allowed tools
