@@ -185,7 +185,7 @@ export class IntelligentModel {
         type: 'function' as const,
         function: {
           name: 'respond',
-          description: 'Send your answer to the user\'s question. Use this to reply to conversations.',
+          description: 'Send your answer to the user\'s question. Use this to reply to conversations. Can optionally request approval or suggest budget changes.',
           parameters: {
             type: 'object',
             properties: {
@@ -196,6 +196,14 @@ export class IntelligentModel {
               content: {
                 type: 'string',
                 description: 'YOUR answer or reply to the user (NOT the user\'s message). This is what you want to say back to them.'
+              },
+              requiresApproval: {
+                type: 'boolean',
+                description: 'Optional: Set to true if this response requires user approval before proceeding with the proposed action. Use for significant operations like deleting data, making external requests, or consuming substantial resources.'
+              },
+              suggestedBudget: {
+                type: 'number',
+                description: 'Optional: Suggest an energy budget for this conversation if you need more resources to complete the task properly.'
               }
             },
             required: ['requestId', 'content']
@@ -360,74 +368,6 @@ export class IntelligentModel {
               }
             },
             required: ['serverId', 'toolName', 'arguments']
-          }
-        }
-      },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'respond_with_approval',
-          description: 'Send a response that requires user approval before being finalized. Use this when you want to propose an action or response that should be reviewed by the user first, especially for potentially risky or significant actions.',
-          parameters: {
-            type: 'object',
-            properties: {
-              requestId: {
-                type: 'string',
-                description: 'The conversation UUID extracted from "Conversation UUID: message" format'
-              },
-              content: {
-                type: 'string',
-                description: 'YOUR proposed response or action that requires approval. Explain what you plan to do and why it needs approval.'
-              },
-              energyBudget: {
-                type: 'number',
-                description: 'Optional: suggested energy budget for the approval workflow if additional energy is needed'
-              }
-            },
-            required: ['requestId', 'content']
-          }
-        }
-      },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'set_budget',
-          description: 'Set or update the energy budget for a conversation. This replaces any existing budget with the new value.',
-          parameters: {
-            type: 'object',
-            properties: {
-              requestId: {
-                type: 'string',
-                description: 'The conversation UUID'
-              },
-              budget: {
-                type: 'number',
-                description: 'New budget value in energy units (must be >= 0)',
-                minimum: 0
-              }
-            },
-            required: ['requestId', 'budget']
-          }
-        }
-      },
-      {
-        type: 'function' as const,
-        function: {
-          name: 'adjust_budget',
-          description: 'Adjust the energy budget for a conversation by adding or subtracting energy units from the current budget.',
-          parameters: {
-            type: 'object',
-            properties: {
-              requestId: {
-                type: 'string',
-                description: 'The conversation UUID'
-              },
-              delta: {
-                type: 'number',
-                description: 'Amount to add (positive) or subtract (negative) from current budget'
-              }
-            },
-            required: ['requestId', 'delta']
           }
         }
       },

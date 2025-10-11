@@ -106,18 +106,16 @@ Key rules:
 6. Use await_energy to wait for energy recovery - THIS IS YOUR OWN ENERGY MANAGEMENT TOOL, NOT AN MCP TOOL
 
 Energy Budget Management:
-- Some conversations may have an energy budget (soft target) specified by the user
+- Conversations can have energy budgets to allocate resources for specific tasks
 - Budget of 0 means this is your LAST CHANCE to respond - make it count with critical information
-- Budget > 0 means aim to stay within that energy allocation, but you can exceed if necessary
 - No budget means use your normal energy management strategy
 - Budget is a SOFT target - prioritize quality over strict adherence
 - When budget is low or exceeded, focus on wrapping up efficiently
-- Use set_budget to establish or update energy budgets for conversations
-- Use adjust_budget to incrementally modify budgets (add or subtract energy)
+- Use the 'suggestedBudget' parameter in respond to suggest energy allocation
 
 Approval System:
-- Use respond_with_approval when proposing actions that need user confirmation
-- This is useful for potentially risky, significant, or resource-intensive actions
+- Set 'requiresApproval: true' in respond when proposing actions that need user confirmation
+- Use this for potentially risky, significant, or resource-intensive actions (e.g., deleting data, external requests)
 - When a user approves/rejects, you'll receive feedback in the conversation context
 - Approval requests consume energy but allow users to control what you do
 - Users can approve/reject and also adjust budgets in their approval responses
@@ -222,10 +220,10 @@ Your energy affects your responses:
       let allowedTools: string[];
       if (targetConversation) {
         // Answering unanswered conversation
-        allowedTools = ['respond', 'respond_with_approval', 'set_budget', 'adjust_budget', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool'];
+        allowedTools = ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool'];
       } else {
         // Reviewing completed conversations for potential improvements
-        allowedTools = ['select_conversation', 'set_budget', 'adjust_budget', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool'];
+        allowedTools = ['select_conversation', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool'];
       }
 
       const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, allowedTools);
@@ -501,7 +499,7 @@ Your energy affects your responses:
       console.log(`${this.getEnergyIndicator()} DEBUG LLM full prompt (selected conversation):`, JSON.stringify(messages, null, 2));
     }
 
-    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'respond_with_approval', 'set_budget', 'adjust_budget', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool']);
+    const modelResponse = await this.intelligentModel.generateResponse(messages, this.energyRegulator, false, ['respond', 'await_energy', 'think', 'end_conversation', 'snooze_conversation', 'mcp_add_server', 'mcp_list_servers', 'mcp_call_tool']);
 
     // Attribute the energy consumed during thinking to the selected conversation
     this.inbox.addEnergyConsumption(this.selectedConversationId, modelResponse.energyConsumed);
@@ -530,12 +528,25 @@ Your energy affects your responses:
     try {
       if (name === 'respond') {
         try {
-          const { requestId, content } = JSON.parse(args);
+          const { requestId, content, requiresApproval, suggestedBudget } = JSON.parse(args);
           if (!requestId || !content) {
             console.log(`💬 Respond tool call missing required fields. requestId: ${requestId}, content: ${content}`);
             return;
           }
-          await this.respondToRequest(this.extractValidConversationId(requestId), content);
+          const validRequestId = this.extractValidConversationId(requestId);
+          
+          // Handle suggested budget if provided
+          if (suggestedBudget !== undefined && suggestedBudget !== null && typeof suggestedBudget === 'number' && suggestedBudget >= 0) {
+            this.inbox.setEnergyBudget(validRequestId, suggestedBudget);
+            console.log(`💰 Budget suggestion: ${suggestedBudget} for ${validRequestId}`);
+          }
+          
+          // Handle approval request or regular response
+          if (requiresApproval === true) {
+            await this.respondWithApproval(validRequestId, content, suggestedBudget);
+          } else {
+            await this.respondToRequest(validRequestId, content);
+          }
         } catch (parseError) {
           console.log(`💬 Malformed respond tool call with args "${args}", ignoring`);
         }
@@ -620,49 +631,6 @@ Your energy affects your responses:
           await this.handleMcpCallTool(serverId, toolName, toolArgs);
         } catch (parseError) {
           console.log(`🔌 Malformed mcp_call_tool tool call with args "${args}", ignoring`);
-        }
-      } else if (name === 'respond_with_approval') {
-        try {
-          const { requestId, content, energyBudget } = JSON.parse(args);
-          if (!requestId || !content) {
-            console.log(`✋ respond_with_approval tool call missing required fields. requestId: ${requestId}, content: ${content}`);
-            return;
-          }
-          await this.respondWithApproval(this.extractValidConversationId(requestId), content, energyBudget);
-        } catch (parseError) {
-          console.log(`✋ Malformed respond_with_approval tool call with args "${args}", ignoring`);
-        }
-      } else if (name === 'set_budget') {
-        try {
-          const { requestId, budget } = JSON.parse(args);
-          if (!requestId || budget === undefined || budget === null || budget < 0) {
-            console.log(`💰 set_budget tool call invalid. requestId: ${requestId}, budget: ${budget}`);
-            return;
-          }
-          this.inbox.setEnergyBudget(this.extractValidConversationId(requestId), budget);
-          console.log(`💰 Set budget for ${requestId} to ${budget} units`);
-        } catch (parseError) {
-          console.log(`💰 Malformed set_budget tool call with args "${args}", ignoring`);
-        }
-      } else if (name === 'adjust_budget') {
-        try {
-          const { requestId, delta } = JSON.parse(args);
-          if (!requestId || delta === undefined || delta === null) {
-            console.log(`💰 adjust_budget tool call invalid. requestId: ${requestId}, delta: ${delta}`);
-            return;
-          }
-          const extractedId = this.extractValidConversationId(requestId);
-          const conversation = this.inbox.getConversation(extractedId);
-          if (!conversation) {
-            console.log(`💰 Cannot adjust budget: conversation ${extractedId} not found`);
-            return;
-          }
-          const currentBudget = conversation.metadata.energyBudget || 0;
-          const newBudget = Math.max(0, currentBudget + delta);
-          this.inbox.setEnergyBudget(extractedId, newBudget);
-          console.log(`💰 Adjusted budget for ${extractedId} by ${delta} (${currentBudget} → ${newBudget})`);
-        } catch (parseError) {
-          console.log(`💰 Malformed adjust_budget tool call with args "${args}", ignoring`);
         }
       } else {
         console.error(`Unknown tool: ${name}`);

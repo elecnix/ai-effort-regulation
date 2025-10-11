@@ -35,9 +35,9 @@ Successfully implemented a comprehensive approval system that allows the AI to r
 
 ### 4. AI Tools ✅
 - **File**: `src/intelligent-model.ts`
-- `respond_with_approval` - Request user approval for a response
-- `set_budget` - Set or update energy budget for a conversation
-- `adjust_budget` - Adjust budget by delta amount
+- Enhanced `respond` tool with optional parameters:
+  - `requiresApproval` (boolean) - Mark response as requiring approval
+  - `suggestedBudget` (number) - Suggest energy budget allocation
 
 ### 5. Loop Integration ✅
 - **File**: `src/loop.ts`
@@ -83,11 +83,12 @@ Successfully implemented a comprehensive approval system that allows the AI to r
 ### AI Requests Approval
 
 ```typescript
-// AI uses the respond_with_approval tool
+// AI uses the respond tool with requiresApproval flag
 {
   "requestId": "abc-123",
   "content": "I'll delete logs older than 30 days. This will free up 2GB. Proceed?",
-  "energyBudget": 50  // Optional: suggest budget if more energy needed
+  "requiresApproval": true,
+  "suggestedBudget": 50  // Optional: suggest budget if more energy needed
 }
 ```
 
@@ -128,23 +129,14 @@ curl -X POST http://localhost:3002/conversations/abc-123/reject \
   }'
 ```
 
-### AI Sets Budget
+### AI Suggests Budget
 
 ```typescript
-// AI uses the set_budget tool
+// AI uses the respond tool with suggestedBudget
 {
   "requestId": "def-456",
-  "budget": 150
-}
-```
-
-### AI Adjusts Budget
-
-```typescript
-// AI uses the adjust_budget tool
-{
-  "requestId": "def-456",
-  "delta": 25  // Add 25 units to current budget
+  "content": "This analysis will require significant processing. I recommend allocating 150 energy units.",
+  "suggestedBudget": 150
 }
 ```
 

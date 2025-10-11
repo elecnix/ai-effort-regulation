@@ -55,51 +55,49 @@ No changes needed - existing `energy_budget` column supports budget updates.
 
 ## Tool Definitions
 
-### 1. respond_with_approval
+### Enhanced `respond` Tool
 
-Request user approval for a response before finalizing it.
+The existing `respond` tool is extended to support approval requests through optional parameters:
 
 ```typescript
 {
-  name: 'respond_with_approval',
-  description: 'Send a response that requires user approval before being finalized. Use this when you want to propose an action or response that should be reviewed by the user first.',
+  name: 'respond',
+  description: 'Send a response to a user request. Can optionally request approval or suggest budget changes.',
   parameters: {
-    requestId: string,      // Conversation UUID
-    content: string,        // Proposed response content
-    energyBudget?: number   // Optional: suggested energy budget for approval workflow
+    type: 'object',
+    properties: {
+      requestId: {
+        type: 'string',
+        description: 'The conversation ID to respond to'
+      },
+      content: {
+        type: 'string',
+        description: 'The response content'
+      },
+      requiresApproval: {
+        type: 'boolean',
+        description: 'Optional: Set to true if this response requires user approval before proceeding',
+        default: false
+      },
+      suggestedBudget: {
+        type: 'number',
+        description: 'Optional: Suggest an energy budget for this conversation if more resources are needed'
+      }
+    },
+    required: ['requestId', 'content']
   }
 }
 ```
 
-### 2. set_budget
+**Key Changes:**
+- `requiresApproval`: Boolean flag to mark response as needing approval
+- `suggestedBudget`: Optional number to suggest budget allocation
 
-Set or update the energy budget for a conversation.
-
-```typescript
-{
-  name: 'set_budget',
-  description: 'Set or update the energy budget for a conversation. This can be used to allocate more/less energy based on task complexity.',
-  parameters: {
-    requestId: string,      // Conversation UUID
-    budget: number          // New budget value (must be >= 0)
-  }
-}
-```
-
-### 3. adjust_budget
-
-Adjust the energy budget by a delta amount.
-
-```typescript
-{
-  name: 'adjust_budget',
-  description: 'Adjust the energy budget for a conversation by adding or subtracting energy units.',
-  parameters: {
-    requestId: string,      // Conversation UUID
-    delta: number           // Amount to add (positive) or subtract (negative)
-  }
-}
-```
+This approach:
+- Reuses existing messaging infrastructure
+- Keeps approval as metadata on responses
+- Reduces API surface area (1 tool instead of 3)
+- Makes approval an optional feature, not a separate workflow
 
 ## API Endpoints
 
