@@ -26,6 +26,7 @@
   "exclude": [
     "node_modules",
     "dist",
+    "ui",
     "test/energy-budget-api.test.ts",
     "test/energy-budget-db.test.ts",
     "test/mcp-http-integration.test.ts",
