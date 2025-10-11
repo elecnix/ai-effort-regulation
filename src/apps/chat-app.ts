@@ -29,7 +29,9 @@ export class ChatApp extends BaseApp {
       '',
       content.response,
       content.energyLevel || 0,
-      content.modelUsed || 'unknown'
+      content.modelUsed || 'unknown',
+      null,
+      this.id
     );
     
     if (content.energyConsumed) {
@@ -38,7 +40,11 @@ export class ChatApp extends BaseApp {
   }
   
   async handleUserMessage(messageId: string, content: string, energyBudget?: number | null): Promise<void> {
-    this.inbox.addResponse(messageId, content, '', 0, '', energyBudget);
+    // Create conversation with app_id
+    this.inbox.addResponse(messageId, content, '', 0, '', energyBudget, this.id);
+    
+    // Associate with app registry
+    this.registry.associateConversation(messageId, this.id);
     
     const message: AppMessage = {
       conversationId: messageId,
@@ -53,7 +59,15 @@ export class ChatApp extends BaseApp {
         source: 'http_api'
       }
     };
-    
-    this.registry.associateConversation(messageId, this.id);
+  }
+  
+  // Get conversations for this app
+  getConversations(limit: number = 10) {
+    return this.inbox.getConversationsByApp(this.id, limit);
+  }
+  
+  // Get pending messages for this app
+  getPendingMessages() {
+    return this.inbox.getPendingMessagesByApp(this.id);
   }
 }

@@ -102,6 +102,53 @@ export class SensitiveLoop {
     return this.chatApp;
   }
 
+  // Handle incoming messages from apps
+  async handleAppMessage(message: any): Promise<void> {
+    // Messages from apps are added to inbox by the app itself
+    // The loop will pick them up in the next cognitive action
+    if (this.debugMode) {
+      console.log(`📨 Received message from app ${message.from} for conversation ${message.conversationId}`);
+    }
+  }
+
+  // Route response back to the originating app
+  private async routeResponseToApp(conversationId: string, response: string, energyLevel: number, modelUsed: string): Promise<void> {
+    // Find which app owns this conversation
+    const conversations = this.appRegistry.getActiveConversations();
+    const conv = conversations.find(c => c.conversationId === conversationId);
+    
+    if (conv) {
+      const app = this.appRegistry.getApp(conv.appId);
+      if (app) {
+        await app.receiveMessage({
+          conversationId,
+          from: 'loop',
+          to: conv.appId,
+          content: {
+            response,
+            energyLevel,
+            modelUsed
+          },
+          timestamp: new Date()
+        });
+        return;
+      }
+    }
+    
+    // Fallback: if no app found, assume it's the chat app
+    await this.chatApp.receiveMessage({
+      conversationId,
+      from: 'loop',
+      to: 'chat',
+      content: {
+        response,
+        energyLevel,
+        modelUsed
+      },
+      timestamp: new Date()
+    });
+  }
+
   private getMCPTools(): MCPToolDefinition[] {
     const mcpTools: MCPToolDefinition[] = [];
     const connections = this.mcpClient.getAllConnections();
@@ -437,7 +484,8 @@ Your energy affects your responses:
         energyLevel = 0;
       }
 
-      this.inbox.addResponse(requestId, userMessage, responseContent, energyLevel, modelUsed);
+      // Route response back to the originating app
+      await this.routeResponseToApp(requestId, responseContent, energyLevel, modelUsed);
 
       // Only remove from pending messages if this was an unanswered conversation
       // For completed conversations, we don't remove them from pending since they're already answered

@@ -200,30 +200,27 @@ export class Inbox {
   }
 
   // Save a conversation response
-  addResponse(requestId: string, userMessage: string, response: string, energyLevel: number, modelUsed: string, energyBudget?: number | null) {
+  addResponse(requestId: string, userMessage: string, response: string, energyLevel: number, modelUsed: string, energyBudget?: number | null, appId?: string) {
     try {
       // Get or create conversation
       let conversation = this.getConversationStmt.get(requestId) as any;
 
       if (!conversation) {
-        // Create new conversation with optional budget
-        if (energyBudget !== undefined && energyBudget !== null) {
-          const insertWithBudgetStmt = this.db.prepare(`
-            INSERT INTO conversations (request_id, input_message, energy_budget)
-            VALUES (?, ?, ?)
-          `);
-          const insertResult = insertWithBudgetStmt.run(requestId, userMessage, energyBudget);
-          conversation = {
-            id: insertResult.lastInsertRowid,
-            request_id: requestId
-          };
-        } else {
-          const insertResult = this.insertConversationStmt.run(requestId, userMessage);
-          conversation = {
-            id: insertResult.lastInsertRowid,
-            request_id: requestId
-          };
-        }
+        // Create new conversation with optional budget and app_id
+        const insertStmt = this.db.prepare(`
+          INSERT INTO conversations (request_id, input_message, energy_budget, app_id)
+          VALUES (?, ?, ?, ?)
+        `);
+        const insertResult = insertStmt.run(
+          requestId, 
+          userMessage, 
+          energyBudget !== undefined && energyBudget !== null ? energyBudget : null,
+          appId || null
+        );
+        conversation = {
+          id: insertResult.lastInsertRowid,
+          request_id: requestId
+        };
       } else if (userMessage) {
         // Update the input message if provided and different
         this.db.prepare('UPDATE conversations SET input_message = ? WHERE id = ?').run(userMessage, conversation.id);
@@ -519,5 +516,44 @@ export class Inbox {
 
   getDatabase(): Database.Database {
     return this.db;
+  }
+
+  // Get conversations for a specific app
+  getConversationsByApp(appId: string, limit: number = 10): ConversationData[] {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT c.request_id
+        FROM conversations c
+        WHERE c.app_id = ?
+          AND c.ended = FALSE
+          AND (c.snooze_until IS NULL OR c.snooze_until < datetime('now'))
+        ORDER BY c.created_at DESC
+        LIMIT ?
+      `);
+      
+      const rows = stmt.all(appId, limit) as Array<{ request_id: string }>;
+      const conversations: ConversationData[] = [];
+      
+      for (const row of rows) {
+        const conv = this.getConversation(row.request_id);
+        if (conv) {
+          conversations.push(conv);
+        }
+      }
+      
+      return conversations;
+    } catch (error) {
+      console.error('Error getting conversations by app:', error);
+      return [];
+    }
+  }
+
+  // Get pending messages for a specific app
+  getPendingMessagesByApp(appId: string): Message[] {
+    const allPending = this.getPendingMessages();
+    return allPending.filter(msg => {
+      const conv = this.getConversationStmt.get(msg.id) as any;
+      return conv && conv.app_id === appId;
+    });
   }
 }
