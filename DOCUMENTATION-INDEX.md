@@ -38,6 +38,8 @@ Complete guide to all documentation in the AI Effort Regulation project.
 | **[2-specification.md](./2-specification.md)** | Core system specification | Developers, architects |
 | **[3-mcp-integration-spec.md](./3-mcp-integration-spec.md)** | MCP integration specification | Developers, integrators |
 | **[5-energy-budget-spec.md](./5-energy-budget-spec.md)** | Energy budget specification | Developers |
+| **[6-apps-vision.md](./6-apps-vision.md)** | Apps feature vision | All stakeholders |
+| **[7-apps-specification.md](./7-apps-specification.md)** | Apps feature technical spec | Developers, architects |
 | **[HTTP-MCP-SPEC.md](./HTTP-MCP-SPEC.md)** | HTTP transport specification | Developers, integrators |
 
 ### Implementation Guides
@@ -53,6 +55,8 @@ Complete guide to all documentation in the AI Effort Regulation project.
 | **[ENERGY-TRACKING-SUMMARY.md](./ENERGY-TRACKING-SUMMARY.md)** | Energy tracking details | Developers |
 | **[IMPLEMENTATION-SUMMARY.md](./IMPLEMENTATION-SUMMARY.md)** | Unified tools implementation | Developers |
 | **[MCP-SPEC-VS-IMPLEMENTATION.md](./MCP-SPEC-VS-IMPLEMENTATION.md)** | Spec vs implementation comparison | Developers |
+| **[8-apps-implementation-plan.md](./8-apps-implementation-plan.md)** | Apps feature implementation plan | Developers, project managers |
+| **[9-apps-implementation-summary.md](./9-apps-implementation-summary.md)** | Apps feature implementation status | All stakeholders |
 
 ### Development Documentation
 

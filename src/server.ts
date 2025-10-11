@@ -6,10 +6,14 @@ import { Inbox } from './inbox';
 import dotenv from 'dotenv';
 dotenv.config();
 
+import { AppRegistry, ChatApp } from './apps';
+
 // Extend global type for sensitiveLoop
 declare global {
   var sensitiveLoop: {
     inbox: Inbox;
+    getAppRegistry(): AppRegistry;
+    getChatApp(): ChatApp;
     [key: string]: any;
   } | undefined;
 }
@@ -43,7 +47,7 @@ export interface Message {
 
 export const messageQueue: Message[] = [];
 
-app.post('/message', function(req: express.Request, res: express.Response): void {
+app.post('/message', async function(req: express.Request, res: express.Response): Promise<void> {
   try {
     const { content, id, energyBudget } = req.body;
 
@@ -99,13 +103,12 @@ app.post('/message', function(req: express.Request, res: express.Response): void
       energyBudget: energyBudget !== undefined ? energyBudget : null
     };
 
-    // Add to message queue for the loop (loop will handle storing user message and generating response)
-    messageQueue.push(message);
-
-    // Save the user message to database immediately
+    // Route through chat app
     const globalLoop = global.sensitiveLoop;
-    if (globalLoop && globalLoop.inbox) {
-      globalLoop.inbox.addResponse(messageId, sanitizedContent, '', 0, '', message.energyBudget);
+    if (globalLoop) {
+      const chatApp = globalLoop.getChatApp();
+      await chatApp.handleUserMessage(messageId, sanitizedContent, message.energyBudget);
+      
       // Also add to in-memory pending messages so the loop detects it
       globalLoop.inbox.addMessage(message);
     }
@@ -196,6 +199,104 @@ app.get('/conversations/:requestId', function(req: express.Request, res: express
     console.error('Error retrieving conversation:', error);
     res.status(500).json({ error: 'Internal server error' });
     return;
+  }
+});
+
+// App management endpoints
+app.get('/apps', async (req, res) => {
+  try {
+    const globalLoop = global.sensitiveLoop;
+    const registry = globalLoop?.getAppRegistry();
+    
+    if (!registry) {
+      res.status(500).json({ error: 'App registry not available' });
+      return;
+    }
+    
+    const apps = registry.getAllApps();
+    const statuses = await Promise.all(apps.map(app => app.getStatus()));
+    
+    res.json({ apps: statuses });
+  } catch (error) {
+    console.error('Error listing apps:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/apps/:appId', async (req, res) => {
+  try {
+    const { appId } = req.params;
+    const globalLoop = global.sensitiveLoop;
+    const registry = globalLoop?.getAppRegistry();
+    
+    const app = registry?.getApp(appId);
+    if (!app) {
+      res.status(404).json({ error: 'App not found' });
+      return;
+    }
+    
+    const status = await app.getStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting app details:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/apps/:appId/energy', (req, res) => {
+  try {
+    const { appId } = req.params;
+    const globalLoop = global.sensitiveLoop;
+    const registry = globalLoop?.getAppRegistry();
+    
+    const metrics = registry?.getEnergyMetrics(appId);
+    if (!metrics) {
+      res.status(404).json({ error: 'App not found' });
+      return;
+    }
+    
+    res.json(metrics);
+  } catch (error) {
+    console.error('Error getting app energy:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/apps/install', async (req, res) => {
+  try {
+    const config = req.body;
+    const globalLoop = global.sensitiveLoop;
+    const registry = globalLoop?.getAppRegistry();
+    
+    if (!registry) {
+      res.status(500).json({ error: 'App registry not available' });
+      return;
+    }
+    
+    await registry.install(config);
+    res.json({ status: 'installed', appId: config.id });
+  } catch (error: any) {
+    console.error('Error installing app:', error);
+    res.status(400).json({ error: error.message || 'Installation failed' });
+  }
+});
+
+app.delete('/apps/:appId', async (req, res) => {
+  try {
+    const { appId } = req.params;
+    const globalLoop = global.sensitiveLoop;
+    const registry = globalLoop?.getAppRegistry();
+    
+    if (!registry) {
+      res.status(500).json({ error: 'App registry not available' });
+      return;
+    }
+    
+    await registry.uninstall(appId);
+    res.json({ status: 'uninstalled' });
+  } catch (error: any) {
+    console.error('Error uninstalling app:', error);
+    res.status(400).json({ error: error.message || 'Uninstall failed' });
   }
 });
 

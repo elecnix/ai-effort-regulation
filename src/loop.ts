@@ -5,6 +5,7 @@ import { Inbox } from './inbox';
 import { ThoughtManager } from './thoughts';
 import { MCPSubAgent } from './mcp-subagent';
 import { MCPClientManager } from './mcp-client';
+import { AppRegistry, ChatApp } from './apps';
 
 interface ConversationEntry {
   role: 'user' | 'assistant' | 'system';
@@ -25,6 +26,8 @@ export class SensitiveLoop {
   private conversationThoughtManager: ThoughtManager; // For focused conversation thoughts (in-memory)
   private mcpSubAgent: MCPSubAgent;
   private mcpClient: MCPClientManager;
+  private appRegistry: AppRegistry;
+  private chatApp: ChatApp;
   private isRunning = false;
   private debugMode = false;
   private selectedConversationId: string | null = null;
@@ -38,6 +41,9 @@ export class SensitiveLoop {
     this.conversationThoughtManager = new ThoughtManager();
     this.mcpSubAgent = new MCPSubAgent(debugMode);
     this.mcpClient = new MCPClientManager();
+    this.appRegistry = new AppRegistry(this.inbox.getDatabase());
+    this.chatApp = new ChatApp(this.appRegistry, this.inbox);
+    this.appRegistry.registerApp(this.chatApp);
   }
 
   async start(durationSeconds?: number) {
@@ -86,6 +92,14 @@ export class SensitiveLoop {
     console.log('🔌 MCP Sub-Agent stopped');
     
     console.log('Sensitive loop stopped');
+  }
+
+  getAppRegistry(): AppRegistry {
+    return this.appRegistry;
+  }
+
+  getChatApp(): ChatApp {
+    return this.chatApp;
   }
 
   private getMCPTools(): MCPToolDefinition[] {

@@ -516,4 +516,8 @@ export class Inbox {
       };
     }
   }
+
+  getDatabase(): Database.Database {
+    return this.db;
+  }
 }
