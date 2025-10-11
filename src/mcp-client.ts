@@ -5,7 +5,8 @@ import { MCPServerConfig } from './mcp-subagent-types';
 import { HTTPTransport, Transport } from './mcp-http-transport';
 
 export interface MCPTool {
-  name: string;
+  name: string; // Namespaced name: serverId_toolName
+  originalName?: string; // Original tool name without prefix
   description: string;
   serverId: string;
   serverName: string;
@@ -74,7 +75,8 @@ export class MCPClientManager {
     // List available tools
     const toolsResponse = await client.listTools();
     const tools: MCPTool[] = (toolsResponse.tools || []).map((tool: any) => ({
-      name: tool.name,
+      name: `${config.id}_${tool.name}`,
+      originalName: tool.name,
       description: tool.description || '',
       serverId: config.id,
       serverName: config.name,
@@ -125,7 +127,8 @@ export class MCPClientManager {
     // List available tools
     const toolsResult = await transport.request('tools/list', {});
     const tools: MCPTool[] = (toolsResult.tools || []).map((tool: any) => ({
-      name: tool.name,
+      name: `${config.id}_${tool.name}`,
+      originalName: tool.name,
       description: tool.description || '',
       serverId: config.id,
       serverName: config.name,
@@ -241,18 +244,27 @@ export class MCPClientManager {
       throw new Error(`Server ${serverId} not connected`);
     }
 
+    // Find the tool to get its original name
+    const tool = connection.tools.find(t => t.name === toolName);
+    if (!tool) {
+      throw new Error(`Tool ${toolName} not found on server ${serverId}`);
+    }
+
+    // Use original name for the actual tool call
+    const actualToolName = tool.originalName || toolName;
+
     try {
       if (connection.client) {
         // STDIO transport
         const result = await connection.client.callTool({
-          name: toolName,
+          name: actualToolName,
           arguments: args
         });
         return result;
       } else if (connection.transport instanceof HTTPTransport) {
         // HTTP transport
         const result = await connection.transport.request('tools/call', {
-          name: toolName,
+          name: actualToolName,
           arguments: args
         });
         return result;

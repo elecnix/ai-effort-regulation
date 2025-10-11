@@ -29,30 +29,30 @@ async function runTests() {
     console.log(`✅ Tools discovered: ${connection.tools.length}\n`);
 
     // Test 2: List tools
-    console.log('3️⃣  Test: List tools from HTTP server');
+    console.log('3️⃣  Test: List tools from HTTP server (with namespacing)');
     connection.tools.forEach(tool => {
-      console.log(`   - ${tool.name}: ${tool.description}`);
+      console.log(`   - ${tool.name} (original: ${tool.originalName}): ${tool.description}`);
     });
-    console.log('✅ Tools listed\n');
+    console.log('✅ Tools listed with namespace prefix\n');
 
-    // Test 3: Call echo tool
-    console.log('4️⃣  Test: Call echo tool');
-    const echoResult = await clientManager.callTool('test-http', 'echo', {
+    // Test 3: Call echo tool (using namespaced name)
+    console.log('4️⃣  Test: Call echo tool using namespaced name');
+    const echoResult = await clientManager.callTool('test-http', 'test-http_echo', {
       message: 'Hello from HTTP MCP!'
     });
     console.log(`✅ Echo result: ${echoResult.content[0].text}\n`);
 
-    // Test 4: Call add tool
-    console.log('5️⃣  Test: Call add tool');
-    const addResult = await clientManager.callTool('test-http', 'add', {
+    // Test 4: Call add tool (using namespaced name)
+    console.log('5️⃣  Test: Call add tool using namespaced name');
+    const addResult = await clientManager.callTool('test-http', 'test-http_add', {
       a: 15,
       b: 27
     });
     console.log(`✅ Add result: ${addResult.content[0].text}\n`);
 
-    // Test 5: Call get_time tool
-    console.log('6️⃣  Test: Call get_time tool');
-    const timeResult = await clientManager.callTool('test-http', 'get_time', {});
+    // Test 5: Call get_time tool (using namespaced name)
+    console.log('6️⃣  Test: Call get_time tool using namespaced name');
+    const timeResult = await clientManager.callTool('test-http', 'test-http_get_time', {});
     console.log(`✅ Time result: ${timeResult.content[0].text}\n`);
 
     // Test 6: Test connection health
