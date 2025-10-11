@@ -18,6 +18,9 @@ export interface ConversationData {
   metadata: {
     totalEnergyConsumed: number;
     sleepCycles: number;
+    energyBudget?: number | null;
+    energyBudgetRemaining?: number | null;
+    budgetStatus?: 'within' | 'exceeded' | 'depleted';
   };
   ended?: boolean;
   endedReason?: string;
@@ -96,6 +99,13 @@ export class Inbox {
     }
     try {
       this.db.exec(`ALTER TABLE conversations ADD COLUMN snooze_duration INTEGER DEFAULT 0`);
+    } catch (error) {
+      // Column probably already exists, ignore error
+    }
+
+    // Migration: Add energy budget columns if they don't exist
+    try {
+      this.db.exec(`ALTER TABLE conversations ADD COLUMN energy_budget REAL DEFAULT NULL`);
     } catch (error) {
       // Column probably already exists, ignore error
     }
@@ -190,18 +200,30 @@ export class Inbox {
   }
 
   // Save a conversation response
-  addResponse(requestId: string, userMessage: string, response: string, energyLevel: number, modelUsed: string) {
+  addResponse(requestId: string, userMessage: string, response: string, energyLevel: number, modelUsed: string, energyBudget?: number | null) {
     try {
       // Get or create conversation
       let conversation = this.getConversationStmt.get(requestId) as any;
 
       if (!conversation) {
-        // Create new conversation
-        const insertResult = this.insertConversationStmt.run(requestId, userMessage);
-        conversation = {
-          id: insertResult.lastInsertRowid,
-          request_id: requestId
-        };
+        // Create new conversation with optional budget
+        if (energyBudget !== undefined && energyBudget !== null) {
+          const insertWithBudgetStmt = this.db.prepare(`
+            INSERT INTO conversations (request_id, input_message, energy_budget)
+            VALUES (?, ?, ?)
+          `);
+          const insertResult = insertWithBudgetStmt.run(requestId, userMessage, energyBudget);
+          conversation = {
+            id: insertResult.lastInsertRowid,
+            request_id: requestId
+          };
+        } else {
+          const insertResult = this.insertConversationStmt.run(requestId, userMessage);
+          conversation = {
+            id: insertResult.lastInsertRowid,
+            request_id: requestId
+          };
+        }
       } else if (userMessage) {
         // Update the input message if provided and different
         this.db.prepare('UPDATE conversations SET input_message = ? WHERE id = ?').run(userMessage, conversation.id);
@@ -220,6 +242,57 @@ export class Inbox {
 
     } catch (error) {
       console.error('Error saving response to database:', error);
+    }
+  }
+
+  // Set energy budget for a conversation
+  setEnergyBudget(requestId: string, budget: number): void {
+    try {
+      const stmt = this.db.prepare(`
+        UPDATE conversations
+        SET energy_budget = ?
+        WHERE request_id = ?
+      `);
+      stmt.run(budget, requestId);
+    } catch (error) {
+      console.error('Error setting energy budget:', error);
+    }
+  }
+
+  // Get remaining budget for a conversation
+  getRemainingBudget(requestId: string): number | null {
+    try {
+      const conversation = this.getConversationStmt.get(requestId) as any;
+      if (!conversation || conversation.energy_budget === null) {
+        return null;
+      }
+      return conversation.energy_budget - conversation.total_energy_consumed;
+    } catch (error) {
+      console.error('Error getting remaining budget:', error);
+      return null;
+    }
+  }
+
+  // Get budget status for a conversation
+  getBudgetStatus(requestId: string): 'within' | 'exceeded' | 'depleted' | null {
+    try {
+      const conversation = this.getConversationStmt.get(requestId) as any;
+      if (!conversation || conversation.energy_budget === null) {
+        return null;
+      }
+      
+      const remaining = conversation.energy_budget - conversation.total_energy_consumed;
+      
+      if (conversation.energy_budget === 0) {
+        return 'depleted';
+      } else if (remaining <= 0) {
+        return 'exceeded';
+      } else {
+        return 'within';
+      }
+    } catch (error) {
+      console.error('Error getting budget status:', error);
+      return null;
     }
   }
 
@@ -284,6 +357,27 @@ export class Inbox {
       const responsesStmt = this.db.prepare('SELECT * FROM responses WHERE conversation_id = ? ORDER BY timestamp ASC');
       const responses = responsesStmt.all(conversation.id);
 
+      // Calculate budget information if budget exists
+      let budgetInfo: {
+        energyBudget?: number | null;
+        energyBudgetRemaining?: number | null;
+        budgetStatus?: 'within' | 'exceeded' | 'depleted';
+      } = {};
+
+      if (conversation.energy_budget !== null && conversation.energy_budget !== undefined) {
+        const remaining = conversation.energy_budget - conversation.total_energy_consumed;
+        budgetInfo.energyBudget = conversation.energy_budget;
+        budgetInfo.energyBudgetRemaining = remaining;
+        
+        if (conversation.energy_budget === 0) {
+          budgetInfo.budgetStatus = 'depleted';
+        } else if (remaining <= 0) {
+          budgetInfo.budgetStatus = 'exceeded';
+        } else {
+          budgetInfo.budgetStatus = 'within';
+        }
+      }
+
       return {
         requestId: conversation.request_id,
         inputMessage: conversation.input_message,
@@ -295,7 +389,8 @@ export class Inbox {
         })),
         metadata: {
           totalEnergyConsumed: conversation.total_energy_consumed,
-          sleepCycles: conversation.sleep_cycles
+          sleepCycles: conversation.sleep_cycles,
+          ...budgetInfo
         },
         ended: conversation.ended,
         endedReason: conversation.ended_reason

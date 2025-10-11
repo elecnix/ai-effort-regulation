@@ -40,6 +40,10 @@ function calculateEstimatedDuration(scenarios: TestScenario[]): number {
   let totalSeconds = 0;
   
   for (const scenario of scenarios) {
+    if (!scenario.steps) {
+      throw new Error(`Scenario ${scenario.name} has no steps`);
+    }
+    
     for (const step of scenario.steps) {
       if (step.action === 'wait') {
         totalSeconds += step.payload.seconds;

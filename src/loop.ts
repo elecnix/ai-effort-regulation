@@ -105,6 +105,14 @@ Key rules:
 5. Use snooze_conversation to delay handling a conversation
 6. Use await_energy to wait for energy recovery - THIS IS YOUR OWN ENERGY MANAGEMENT TOOL, NOT AN MCP TOOL
 
+Energy Budget Management:
+- Some conversations may have an energy budget (soft target) specified by the user
+- Budget of 0 means this is your LAST CHANCE to respond - make it count with critical information
+- Budget > 0 means aim to stay within that energy allocation, but you can exceed if necessary
+- No budget means use your normal energy management strategy
+- Budget is a SOFT target - prioritize quality over strict adherence
+- When budget is low or exceeded, focus on wrapping up efficiently
+
 MCP (Model Context Protocol) Tools:
 - You have access to MCP servers that provide additional capabilities
 - Use mcp_add_server to connect to a new MCP server (e.g., filesystem, github)
@@ -270,7 +278,30 @@ Your energy affects your responses:
     const energyStatus = this.energyRegulator.getStatus();
     const msg = `${this.energyRegulator.getEnergyPercentage()}% (${energyStatus})`;
     message = `${message}\nDate: ${new Date().toISOString()}\nYour energy level is ${msg}.\nThere are ${totalMessages} total messages, and ${totalUnansweredCount} total unanswered conversations.`;
+    
+    // Add budget information if the focused conversation has a budget
     if (conversationsToInclude.length > 0) {
+      const targetConv = conversationsToInclude[0];
+      if (targetConv) {
+        const conversation = this.inbox.getConversation(targetConv.id);
+        
+        if (conversation && conversation.metadata.energyBudget !== null && conversation.metadata.energyBudget !== undefined) {
+          const budget = conversation.metadata.energyBudget;
+          const consumed = conversation.metadata.totalEnergyConsumed;
+          const remaining = conversation.metadata.energyBudgetRemaining || 0;
+          
+          if (budget === 0) {
+            message = `${message}\n⚠️ CRITICAL: This conversation has ZERO energy budget. This is your LAST CHANCE to respond. Make it count!`;
+          } else if (remaining <= 0) {
+            message = `${message}\n⚠️ Budget exceeded: Started with ${budget} units, consumed ${consumed.toFixed(1)} units. Try to wrap up efficiently.`;
+          } else if (remaining < budget * 0.2) {
+            message = `${message}\n⚡ Budget running low: ${remaining.toFixed(1)} of ${budget} units remaining (${((remaining/budget)*100).toFixed(0)}%)`;
+          } else {
+            message = `${message}\n💰 Energy budget: ${remaining.toFixed(1)} of ${budget} units remaining`;
+          }
+        }
+      }
+      
       message = `${message}\nYou are currently focused on one conversation. Use the respond tool, snooze_conversation, or await_energy.`;
     } else if (totalMessages == 0) {
       message = `${message}\nAim to stay at 100% energy with await_energy.`;

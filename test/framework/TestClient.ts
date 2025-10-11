@@ -9,19 +9,25 @@ export class TestClient {
     this.serverUrl = serverUrl;
   }
 
-  async sendMessage(content: string, requestId?: string): Promise<string> {
+  async sendMessage(content: string, energyBudget?: number, requestId?: string): Promise<string> {
     const id = requestId || uuidv4();
     
     try {
+      const body: any = {
+        content,
+        id
+      };
+      
+      if (energyBudget !== undefined) {
+        body.energyBudget = energyBudget;
+      }
+      
       const response = await fetch(`${this.serverUrl}/message`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          content,
-          id
-        })
+        body: JSON.stringify(body)
       });
 
       if (!response.ok) {
@@ -34,6 +40,11 @@ export class TestClient {
       console.error(`Error sending message: ${error}`);
       throw error;
     }
+  }
+
+  // Helper method for clarity
+  sleep(ms: number): Promise<void> {
+    return this.wait(ms);
   }
 
   async getConversation(requestId: string): Promise<ConversationResponse | null> {

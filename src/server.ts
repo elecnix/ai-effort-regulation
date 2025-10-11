@@ -38,13 +38,14 @@ export interface Message {
   id: string;
   content: string;  // user message
   timestamp: Date;
+  energyBudget?: number | null;  // optional energy budget
 }
 
 export const messageQueue: Message[] = [];
 
 app.post('/message', function(req: express.Request, res: express.Response): void {
   try {
-    const { content, id } = req.body;
+    const { content, id, energyBudget } = req.body;
 
     // Input validation
     if (!content || typeof content !== 'string') {
@@ -68,6 +69,16 @@ app.post('/message', function(req: express.Request, res: express.Response): void
       return;
     }
 
+    // Validate energyBudget if provided
+    if (energyBudget !== undefined && energyBudget !== null) {
+      if (typeof energyBudget !== 'number' || isNaN(energyBudget) || energyBudget < 0) {
+        res.status(400).json({
+          error: 'energyBudget must be a non-negative number'
+        });
+        return;
+      }
+    }
+
     // Sanitize input (basic XSS prevention)
     const sanitizedContent = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
 
@@ -84,7 +95,8 @@ app.post('/message', function(req: express.Request, res: express.Response): void
     const message: Message = {
       id: messageId,
       content: sanitizedContent,
-      timestamp: new Date()
+      timestamp: new Date(),
+      energyBudget: energyBudget !== undefined ? energyBudget : null
     };
 
     // Add to message queue for the loop (loop will handle storing user message and generating response)
@@ -93,12 +105,13 @@ app.post('/message', function(req: express.Request, res: express.Response): void
     // Save the user message to database immediately
     const globalLoop = global.sensitiveLoop;
     if (globalLoop && globalLoop.inbox) {
-      globalLoop.inbox.addResponse(messageId, sanitizedContent, '', 0, '');
+      globalLoop.inbox.addResponse(messageId, sanitizedContent, '', 0, '', message.energyBudget);
       // Also add to in-memory pending messages so the loop detects it
       globalLoop.inbox.addMessage(message);
     }
 
-    console.log(`📨 Received: "${sanitizedContent.substring(0, 200)}${sanitizedContent.length > 200 ? '...' : ''}"`);
+    const budgetInfo = energyBudget !== undefined && energyBudget !== null ? ` [Budget: ${energyBudget}]` : '';
+    console.log(`📨 Received: "${sanitizedContent.substring(0, 200)}${sanitizedContent.length > 200 ? '...' : ''}"${budgetInfo}`);
 
     res.json({
       status: 'received',
