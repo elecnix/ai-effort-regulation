@@ -75,12 +75,27 @@ export const messageQueue: Message[] = [];
  *   post:
  *     tags: [Messages]
  *     summary: Send a message to the AI system
+ *     description: Queue a message for processing by the cognitive loop
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Message'
+ *             type: object
+ *             required: [content]
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 maxLength: 10000
+ *                 description: The message content
+ *                 example: "What is the capital of France?"
+ *               id:
+ *                 type: string
+ *                 description: Optional message ID (auto-generated if not provided)
+ *               energyBudget:
+ *                 type: number
+ *                 nullable: true
+ *                 description: Optional energy budget for this message
  *     responses:
  *       200:
  *         description: Message queued successfully
@@ -94,19 +109,10 @@ export const messageQueue: Message[] = [];
  *                   example: queued
  *                 id:
  *                   type: string
- *                   description: Message ID
  *       400:
- *         description: Invalid input
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
+ *         $ref: '#/components/responses/BadRequest'
  *       429:
- *         description: Rate limit exceeded
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
+ *         $ref: '#/components/responses/RateLimitExceeded'
  */
 app.post('/message', async function(req: express.Request, res: express.Response): Promise<void> {
   try {
@@ -587,19 +593,92 @@ app.delete('/apps/:appId/memories/:memoryId', (req, res) => {
  *   get:
  *     tags: [System]
  *     summary: Health check endpoint for monitoring
+ *     description: Comprehensive health check with database connectivity, memory usage, and energy status
  *     responses:
  *       200:
  *         description: System is healthy or has warnings
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Health'
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   enum: [ok, warning, degraded, unhealthy]
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 uptime:
+ *                   type: integer
+ *                   description: System uptime in seconds
+ *                 version:
+ *                   type: string
+ *                 environment:
+ *                   type: string
+ *                 system:
+ *                   type: object
+ *                   properties:
+ *                     platform:
+ *                       type: string
+ *                     nodeVersion:
+ *                       type: string
+ *                     pid:
+ *                       type: integer
+ *                 memory:
+ *                   type: object
+ *                   properties:
+ *                     heapUsed:
+ *                       type: integer
+ *                     heapTotal:
+ *                       type: integer
+ *                     percentUsed:
+ *                       type: integer
+ *                 energy:
+ *                   type: object
+ *                   properties:
+ *                     current:
+ *                       type: number
+ *                     percentage:
+ *                       type: integer
+ *                     status:
+ *                       type: string
+ *                 database:
+ *                   type: object
+ *                   properties:
+ *                     connected:
+ *                       type: boolean
+ *                     error:
+ *                       type: string
+ *                       nullable: true
+ *                 checks:
+ *                   type: object
+ *                   properties:
+ *                     queueOverload:
+ *                       type: boolean
+ *                     lowEnergy:
+ *                       type: boolean
+ *                     highMemory:
+ *                       type: boolean
+ *                     dbConnected:
+ *                       type: boolean
  *       503:
- *         description: System is unhealthy
+ *         description: System is unhealthy (database down)
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/Health'
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: unhealthy
+ *                 database:
+ *                   type: object
+ *                   properties:
+ *                     connected:
+ *                       type: boolean
+ *                       example: false
+ *                     error:
+ *                       type: string
  */
 app.get('/health', (req, res) => {
   // Comprehensive health check for monitoring and operations
