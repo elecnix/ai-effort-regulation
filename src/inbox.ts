@@ -511,6 +511,33 @@ export class Inbox {
     }
   }
 
+  // Get all recent conversations (including ended ones) for UI display
+  getAllRecentConversations(limit: number = 50): ConversationData[] {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT c.request_id
+        FROM conversations c
+        LEFT JOIN responses r ON c.id = r.conversation_id
+        GROUP BY c.id, c.request_id
+        ORDER BY MAX(COALESCE(r.timestamp, c.created_at)) DESC
+        LIMIT ?
+      `);
+
+      const rows = stmt.all(limit) as { request_id: string }[];
+      const conversations: ConversationData[] = [];
+      for (const row of rows) {
+        const conv = this.getConversation(row.request_id);
+        if (conv) {
+          conversations.push(conv);
+        }
+      }
+      return conversations;
+    } catch (error) {
+      console.error('Error getting all recent conversations:', error);
+      return [];
+    }
+  }
+
   // Get conversation statistics (for /stats endpoint)
   getConversationStats(): ConversationStats {
     try {

@@ -34,6 +34,18 @@ export class ChatApp extends BaseApp {
       this.id
     );
     
+    // Broadcast message added event for real-time UI updates
+    const globalLoop = global as any;
+    if (globalLoop.eventBridge) {
+      globalLoop.eventBridge.broadcastMessageAdded(
+        conversationId,
+        'assistant',
+        content.response,
+        content.energyLevel || 0,
+        content.modelUsed || 'unknown'
+      );
+    }
+    
     if (content.energyConsumed) {
       this.reportEnergyConsumption(content.energyConsumed, conversationId, 'generate_response');
     }
@@ -42,6 +54,18 @@ export class ChatApp extends BaseApp {
   async handleUserMessage(messageId: string, content: string, energyBudget?: number | null): Promise<void> {
     // Create conversation with app_id
     this.inbox.addResponse(messageId, content, '', 0, '', energyBudget, this.id);
+    
+    // Broadcast user message added event for real-time UI updates
+    const globalLoop = global as any;
+    if (globalLoop.eventBridge) {
+      globalLoop.eventBridge.broadcastMessageAdded(
+        messageId,
+        'user',
+        content,
+        0,
+        ''
+      );
+    }
     
     // Associate with app registry
     this.registry.associateConversation(messageId, this.id);

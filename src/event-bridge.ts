@@ -89,17 +89,17 @@ export class EventBridge {
       try {
         const limit = payload?.limit || 50;
         const globalLoop = global as any;
-        const conversations = globalLoop.sensitiveLoop?.inbox?.getRecentCompletedConversations(limit) || [];
+        const conversations = globalLoop.sensitiveLoop?.inbox?.getAllRecentConversations(limit) || [];
 
         const formattedConversations = conversations.map((conv: any) => ({
           id: conv.requestId,
           userMessage: conv.inputMessage,
-          state: conv.ended ? 'ended' : 'active',
+          state: conv.ended ? 'ended' : (conv.metadata.snoozedUntil ? 'snoozed' : 'active'),
           messageCount: conv.responses.length,
           energyConsumed: conv.metadata.totalEnergyConsumed,
           lastActivity: conv.responses.length > 0 
             ? conv.responses[conv.responses.length - 1].timestamp 
-            : new Date().toISOString()
+            : conv.metadata.createdAt
         }));
 
         this.wsServer.sendToClient(clientId, {
