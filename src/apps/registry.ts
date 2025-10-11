@@ -53,8 +53,8 @@ export class AppRegistry {
         conversation_id TEXT NOT NULL,
         app_id TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (conversation_id) REFERENCES conversations(request_id),
-        FOREIGN KEY (app_id) REFERENCES apps(app_id)
+        FOREIGN KEY (app_id) REFERENCES apps(app_id),
+        UNIQUE(conversation_id, app_id)
       );
       
       CREATE INDEX IF NOT EXISTS idx_apps_app_id ON apps(app_id);
@@ -192,7 +192,11 @@ export class AppRegistry {
     try {
       this.associateConversationStmt.run(conversationId, appId);
     } catch (error) {
-      console.error(`Error associating conversation ${conversationId} with app ${appId}:`, error);
+      // Log but don't throw - association is not critical for operation
+      // The conversation can still function without app association
+      if (error instanceof Error && !error.message.includes('UNIQUE constraint')) {
+        console.error(`Error associating conversation ${conversationId} with app ${appId}:`, error);
+      }
     }
   }
   

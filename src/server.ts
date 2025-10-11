@@ -26,9 +26,16 @@ const MAX_MESSAGE_LENGTH = parseInt(process.env.MAX_MESSAGE_LENGTH || '10000');
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   limit: 60,
-  message: 'Too many requests from this IP, please try again later.',
+  message: { error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Rate limit exceeded. Please try again later.',
+      retryAfter: 60
+    });
+  },
 });
 
 // Apply rate limiting to all requests
@@ -144,12 +151,50 @@ app.post('/message', async function(req: express.Request, res: express.Response)
   }
 });
 
+// Validation helpers
+function validateLimit(limit: any): number {
+  const parsed = parseInt(limit);
+  if (isNaN(parsed) || parsed < 0) {
+    return 10; // default
+  }
+  return Math.min(parsed, 100); // max 100
+}
+
+function validateState(state: any): string | undefined {
+  if (!state) return undefined;
+  const validStates = ['active', 'ended', 'snoozed'];
+  if (validStates.includes(state)) {
+    return state;
+  }
+  throw new Error(`Invalid state. Must be one of: ${validStates.join(', ')}`);
+}
+
+function validateBudgetStatus(status: any): string | undefined {
+  if (!status) return undefined;
+  const validStatuses = ['within', 'exceeded', 'depleted'];
+  if (validStatuses.includes(status)) {
+    return status;
+  }
+  throw new Error(`Invalid budgetStatus. Must be one of: ${validStatuses.join(', ')}`);
+}
+
 // New endpoints for conversation data
 app.get('/conversations', function(req: express.Request, res: express.Response): void {
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
-    const state = req.query.state as string;
-    const budgetStatus = req.query.budgetStatus as string;
+    // Validate query parameters
+    const limit = validateLimit(req.query.limit);
+    let state: string | undefined;
+    let budgetStatus: string | undefined;
+    
+    try {
+      state = validateState(req.query.state);
+      budgetStatus = validateBudgetStatus(req.query.budgetStatus);
+    } catch (error) {
+      res.status(400).json({ 
+        error: error instanceof Error ? error.message : 'Invalid parameter'
+      });
+      return;
+    }
     
     const globalLoop = global.sensitiveLoop;
     const conversations = globalLoop && globalLoop.inbox ? globalLoop.inbox.getRecentCompletedConversations(limit) : [];
@@ -161,12 +206,13 @@ app.get('/conversations', function(req: express.Request, res: express.Response):
       filteredConversations = filteredConversations.filter(conv => {
         if (state === 'active') return !conv.ended;
         if (state === 'ended') return conv.ended === true;
+        if (state === 'snoozed') return false; // TODO: implement snooze detection
         return true;
       });
     }
 
     // Filter by budget status if provided
-    if (budgetStatus && ['within', 'exceeded', 'depleted'].includes(budgetStatus)) {
+    if (budgetStatus) {
       filteredConversations = filteredConversations.filter(conv => 
         conv.metadata.budgetStatus === budgetStatus
       );
@@ -411,6 +457,17 @@ app.get('/health', (req, res) => {
   const currentEnergy = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getEnergy() : 0;
   const energyStatus = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getStatus() : 'unknown';
 
+  // Check database connectivity
+  let dbHealthy = false;
+  try {
+    if (globalLoop && globalLoop.inbox) {
+      globalLoop.inbox.getDatabase().prepare('SELECT 1').get();
+      dbHealthy = true;
+    }
+  } catch (error) {
+    console.error('Database health check failed:', error);
+  }
+
   const health = {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -428,21 +485,42 @@ app.get('/health', (req, res) => {
       percentage: Math.round(Math.min(100, Math.max(0, currentEnergy))),
       status: energyStatus
     },
-    database: {
-      connected: true // Would need actual DB health check
+    components: {
+      database: dbHealthy ? 'healthy' : 'unhealthy',
+      energyRegulator: globalLoop && globalLoop.energyRegulator ? 'healthy' : 'unhealthy',
+      inbox: globalLoop && globalLoop.inbox ? 'healthy' : 'unhealthy'
     }
   };
 
-  // Check if system is overloaded
-  if (messageQueue.length > 100) {
-    health.status = 'warning';
-    res.status(200).json(health);
+  // Determine overall status
+  let httpStatus = 200;
+  if (!dbHealthy || !globalLoop) {
+    health.status = 'unhealthy';
+    httpStatus = 503;
+  } else if (messageQueue.length > 100) {
+    health.status = 'degraded';
   } else if (currentEnergy < 20) {
     health.status = 'low_energy';
-    res.status(200).json(health);
-  } else {
-    res.json(health);
   }
+
+  res.status(httpStatus).json(health);
+});
+
+// Kubernetes-style readiness probe
+app.get('/ready', (req, res) => {
+  const globalLoop = global.sensitiveLoop;
+  const ready = globalLoop && globalLoop.inbox && globalLoop.energyRegulator;
+  
+  if (ready) {
+    res.status(200).json({ ready: true });
+  } else {
+    res.status(503).json({ ready: false });
+  }
+});
+
+// Kubernetes-style liveness probe
+app.get('/live', (req, res) => {
+  res.status(200).json({ alive: true });
 });
 
 async function findAvailablePort(startPort: number, maxAttempts: number = 10): Promise<number> {
