@@ -67,7 +67,10 @@ npm run build
 npm start
 ```
 
-The system will start on `http://localhost:3002`
+The system will start on `http://localhost:6740`:
+- **Monitor UI**: http://localhost:6740/ (Web dashboard)
+- **REST API**: http://localhost:6740/message, /stats, /conversations, /health
+- **WebSocket**: ws://localhost:6740/ws
 
 ### Running with OpenRouter
 ```bash
@@ -90,26 +93,33 @@ npm run debug -- --duration=60
 
 ### Manual Testing
 
-#### Send Messages
+#### Monitor UI (Recommended)
 ```bash
-curl -X POST http://localhost:3002/message \
+# Open in your browser
+http://localhost:6740/
+
+# Features:
+# - Real-time energy monitoring
+# - Live conversation view
+# - Event stream
+# - Interactive chat interface
+```
+
+#### REST API
+```bash
+# Send Messages
+curl -X POST http://localhost:6740/message \
   -H "Content-Type: application/json" \
   -d '{"content": "What is quantum computing?"}'
-```
 
-#### Check System Stats
-```bash
-curl http://localhost:3002/stats
-```
+# Check System Stats
+curl http://localhost:6740/stats
 
-#### Retrieve Conversations
-```bash
-curl http://localhost:3002/conversations/{requestId}
-```
+# Retrieve Conversations
+curl http://localhost:6740/conversations/{requestId}
 
-#### Health Check
-```bash
-curl http://localhost:3002/health
+# Health Check
+curl http://localhost:6740/health
 ```
 
 #### Demo Script
@@ -392,6 +402,7 @@ Uninstall an app.
 ### Core Capabilities
 - **Energy-Aware Processing**: Responses adapt to available energy
 - **User-Guided Energy Budgets**: Specify effort allocation per conversation
+- **Monitor UI**: Real-time web dashboard for system observation and interaction
 - **Continuous Reflection**: System thinks about past conversations
 - **Model Switching**: Automatic optimization based on complexity needs
 - **Persistent Memory**: SQLite-backed conversation history
@@ -415,6 +426,7 @@ Uninstall an app.
 
 ### User Documentation
 - **[User Guide](./USER-GUIDE.md)**: Comprehensive user guide with examples
+- **[Monitor UI Guide](./MONITOR-UI-GUIDE.md)**: Web dashboard user guide
 - **[Quick Reference](./QUICK-REFERENCE.md)**: Fast reference for common tasks
 - **[Features Overview](./FEATURES.md)**: Complete feature list and status
 - **[Energy Budget Quick Start](./ENERGY-BUDGET-QUICKSTART.md)**: Guide to energy budgets
@@ -428,6 +440,7 @@ Uninstall an app.
 - **[Apps Vision](./6-apps-vision.md)**: Multi-app architecture vision
 - **[Apps Specification](./7-apps-specification.md)**: Apps feature technical spec
 - **[HTTP MCP Spec](./HTTP-MCP-SPEC.md)**: HTTP transport specification
+- **[Monitor UI Spec](./MONITOR-UI-SPEC.md)**: Monitor UI technical specification
 
 ### Implementation Guides
 - **[Apps Implementation Plan](./8-apps-implementation-plan.md)**: Phased implementation plan
@@ -437,6 +450,7 @@ Uninstall an app.
 - **[Tool Namespacing](./TOOL-NAMESPACING.md)**: Tool naming and collision prevention
 - **[HTTP MCP Implementation](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md)**: HTTP transport guide
 - **[MCP Integration Complete](./MCP-INTEGRATION-COMPLETE.md)**: MCP integration summary
+- **[Monitor UI Implementation](./MONITOR-UI-IMPLEMENTATION-PLAN.md)**: Monitor UI implementation details
 
 ## 🤝 Contributing
 

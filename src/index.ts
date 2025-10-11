@@ -1,6 +1,7 @@
 import { startServer } from './server';
 import { SensitiveLoop } from './loop';
 import { ProviderConfiguration } from './provider-config';
+import { EventBridge } from './event-bridge';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -69,8 +70,16 @@ async function main() {
     process.exit(1);
   }
 
-  // Start HTTP server
-  await startServer();
+  // Start HTTP server and WebSocket server
+  const { port, server, wsServer } = await startServer();
+
+  // Initialize event bridge
+  const eventBridge = new EventBridge(wsServer, sensitiveLoop);
+  eventBridge.start();
+  console.log('🌉 Event bridge initialized');
+
+  // Make event bridge globally accessible
+  (global as any).eventBridge = eventBridge;
 
   // Start the sensitive loop
   await sensitiveLoop.start(durationSeconds);
