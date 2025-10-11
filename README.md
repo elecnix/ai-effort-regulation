@@ -67,23 +67,43 @@ npm run build
 npm start
 ```
 
-The system will start on `http://localhost:3002`
+The system will start on `http://localhost:6740` (default port)
 
-### Running with OpenRouter
+### Command-Line Options
+
+```bash
+npm start -- [options]
+
+Options:
+  --port <number>          Server port (default: 6740)
+  --provider <name>        AI provider: ollama or openrouter (default: ollama)
+  --model <name>           Model name (provider-specific)
+  --replenish-rate <num>   Energy replenish rate per second (default: 1)
+  --duration <seconds>     Auto-stop after duration (for testing)
+  --debug                  Enable debug mode (show LLM prompts)
+```
+
+### Examples
+
+**Custom Port:**
+```bash
+npm start -- --port 3002
+```
+
+**OpenRouter Provider:**
 ```bash
 npm start -- --provider openrouter --model x-ai/grok-4-fast
 ```
 
-### Debug Mode
-
-You can run the system in debug mode to see the messages sent to the LLM:
+**Debug Mode:**
 ```bash
 npm run debug
+npm run debug -- --duration=60
 ```
 
-It can also be useful to limit the run time to a few seconds:
+**Fast Energy Replenishment (Testing):**
 ```bash
-npm run debug -- --duration=60
+npm start -- --replenish-rate 10 --duration 300
 ```
 
 ## 🧪 Testing
@@ -270,6 +290,26 @@ Get system-wide conversation statistics.
 }
 ```
 
+### GET /conversations
+List recent conversations with optional filtering.
+
+**Query Parameters:**
+- `limit` (optional): Number of conversations to return (default: 10)
+- `state` (optional): Filter by state (`active`, `ended`)
+- `budgetStatus` (optional): Filter by budget status (`within`, `exceeded`, `depleted`)
+
+**Response:**
+```json
+{
+  "conversations": [...],
+  "total": 5,
+  "filters": {
+    "state": "active",
+    "budgetStatus": "exceeded"
+  }
+}
+```
+
 ### GET /conversations/:requestId
 Retrieve a specific conversation.
 
@@ -289,8 +329,23 @@ Retrieve a specific conversation.
   "metadata": {
     "totalEnergyConsumed": 0,
     "sleepCycles": 0,
-    "modelSwitches": 0
+    "modelSwitches": 0,
+    "budgetStatus": "within",
+    "energyBudget": 50
   }
+}
+```
+
+### GET /energy
+Get current energy level (lightweight endpoint).
+
+**Response:**
+```json
+{
+  "current": 85.5,
+  "percentage": 85,
+  "status": "high",
+  "timestamp": "2025-10-11T06:52:31.895Z"
 }
 ```
 
@@ -301,7 +356,13 @@ Check system health.
 ```json
 {
   "status": "ok",
-  "timestamp": "2025-10-04T13:00:00.000Z"
+  "timestamp": "2025-10-04T13:00:00.000Z",
+  "uptime": 3600,
+  "energy": {
+    "current": 85,
+    "percentage": 85,
+    "status": "high"
+  }
 }
 ```
 
@@ -384,6 +445,28 @@ Uninstall an app.
 {
   "success": true,
   "appId": "gmail"
+}
+```
+
+### POST /admin/trigger-reflection
+Manually trigger a reflection cycle (for testing/debugging).
+
+**Response:**
+```json
+{
+  "status": "triggered",
+  "message": "Reflection cycle initiated"
+}
+```
+
+### POST /admin/process-conversation/:requestId
+Force processing of a specific conversation (for testing/debugging).
+
+**Response:**
+```json
+{
+  "status": "processed",
+  "requestId": "abc-123"
 }
 ```
 

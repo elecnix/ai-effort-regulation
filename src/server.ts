@@ -34,6 +34,19 @@ const limiter = rateLimit({
 // Apply rate limiting to all requests
 app.use(limiter);
 
+// CORS support for web clients
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+    return;
+  }
+  next();
+});
+
 // Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));
 
@@ -134,25 +147,49 @@ app.post('/message', async function(req: express.Request, res: express.Response)
 // New endpoints for conversation data
 app.get('/conversations', function(req: express.Request, res: express.Response): void {
   try {
-    const limit = parseInt(req.query.limit as string) || 10; // Default to 10 recent conversations
+    const limit = parseInt(req.query.limit as string) || 10;
+    const state = req.query.state as string;
+    const budgetStatus = req.query.budgetStatus as string;
+    
     const globalLoop = global.sensitiveLoop;
     const conversations = globalLoop && globalLoop.inbox ? globalLoop.inbox.getRecentCompletedConversations(limit) : [];
 
+    let filteredConversations = conversations;
+
+    // Filter by state if provided
+    if (state) {
+      filteredConversations = filteredConversations.filter(conv => {
+        if (state === 'active') return !conv.ended;
+        if (state === 'ended') return conv.ended === true;
+        return true;
+      });
+    }
+
+    // Filter by budget status if provided
+    if (budgetStatus && ['within', 'exceeded', 'depleted'].includes(budgetStatus)) {
+      filteredConversations = filteredConversations.filter(conv => 
+        conv.metadata.budgetStatus === budgetStatus
+      );
+    }
+
     // Format conversations with energy consumption info
-    const formattedConversations = conversations.map(conv => ({
+    const formattedConversations = filteredConversations.map(conv => ({
       id: conv.requestId,
       requestMessage: conv.inputMessage,
       responseMessages: conv.responses.map(r => r.content),
-      timestamp: new Date(), // Use current time for ordering
+      timestamp: new Date(),
       energyConsumed: conv.metadata.totalEnergyConsumed,
       responseCount: conv.responses.length,
       ended: conv.ended,
-      endedReason: conv.endedReason
+      endedReason: conv.endedReason,
+      budgetStatus: conv.metadata.budgetStatus,
+      energyBudget: conv.metadata.energyBudget
     }));
 
     res.json({
       conversations: formattedConversations,
-      total: formattedConversations.length
+      total: formattedConversations.length,
+      filters: { state, budgetStatus }
     });
   } catch (error) {
     console.error('Error retrieving recent conversations:', error);
@@ -300,6 +337,74 @@ app.delete('/apps/:appId', async (req, res) => {
   }
 });
 
+app.get('/energy', (req, res) => {
+  try {
+    const globalLoop = global.sensitiveLoop;
+    if (!globalLoop || !globalLoop.energyRegulator) {
+      res.status(500).json({ error: 'Energy regulator not available' });
+      return;
+    }
+
+    const currentEnergy = globalLoop.energyRegulator.getEnergy();
+    const energyStatus = globalLoop.energyRegulator.getStatus();
+
+    res.json({
+      current: currentEnergy,
+      percentage: Math.round(Math.min(100, Math.max(0, currentEnergy))),
+      status: energyStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error retrieving energy:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Admin endpoints for manual triggers
+app.post('/admin/trigger-reflection', async (req, res) => {
+  try {
+    const globalLoop = global.sensitiveLoop;
+    if (!globalLoop) {
+      res.status(500).json({ error: 'System not available' });
+      return;
+    }
+
+    // Trigger reflection by calling the internal method if available
+    if (typeof globalLoop.triggerReflection === 'function') {
+      await globalLoop.triggerReflection();
+      res.json({ status: 'triggered', message: 'Reflection cycle initiated' });
+    } else {
+      res.status(501).json({ error: 'Reflection trigger not implemented' });
+    }
+  } catch (error) {
+    console.error('Error triggering reflection:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/admin/process-conversation/:requestId', async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const globalLoop = global.sensitiveLoop;
+    
+    if (!globalLoop) {
+      res.status(500).json({ error: 'System not available' });
+      return;
+    }
+
+    // Force processing of a specific conversation
+    if (typeof globalLoop.processConversation === 'function') {
+      await globalLoop.processConversation(requestId);
+      res.json({ status: 'processed', requestId });
+    } else {
+      res.status(501).json({ error: 'Manual processing not implemented' });
+    }
+  } catch (error) {
+    console.error('Error processing conversation:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/health', (req, res) => {
   // Comprehensive health check
   const globalLoop = global.sensitiveLoop;
@@ -363,8 +468,9 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
   throw new Error(`No available port found in range ${startPort}-${startPort + maxAttempts - 1}`);
 }
 
-export async function startServer() {
-  const port = await findAvailablePort(DEFAULT_PORT);
+export async function startServer(preferredPort?: number) {
+  const startPort = preferredPort || DEFAULT_PORT;
+  const port = await findAvailablePort(startPort);
   app.listen(port, () => {
     console.log(`HTTP Server listening on port ${port}`);
   });

@@ -22,5 +22,12 @@
     "sourceMap": true
   },
   "include": ["src/**/*", "test/**/*"],
-  "exclude": ["node_modules", "dist", "test/**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test/energy-budget-api.test.ts",
+    "test/energy-budget-db.test.ts",
+    "test/mcp-http-integration.test.ts",
+    "test/mcp-http-transport.test.ts"
+  ]
 }
