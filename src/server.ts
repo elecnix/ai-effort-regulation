@@ -529,7 +529,7 @@ app.get('/apps/:appId/memories', (req, res) => {
     res.json({
       appId,
       count: memories.length,
-      memories: memories.map(m => ({
+      memories: memories.map((m: any) => ({
         id: m.id,
         content: m.content,
         createdAt: m.createdAt,
