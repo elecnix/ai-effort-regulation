@@ -194,7 +194,7 @@ export class IntelligentModel {
         type: 'function' as const,
         function: {
           name: 'respond',
-          description: 'Send your answer to the user\'s question. Use this to reply to conversations.',
+          description: 'Send your answer to the user\'s question. Use this to reply to conversations. Can optionally request approval or suggest budget changes.',
           parameters: {
             type: 'object',
             properties: {
@@ -205,6 +205,14 @@ export class IntelligentModel {
               content: {
                 type: 'string',
                 description: 'YOUR answer or reply to the user (NOT the user\'s message). This is what you want to say back to them.'
+              },
+              requiresApproval: {
+                type: 'boolean',
+                description: 'Optional: Set to true if this response requires user approval before proceeding with the proposed action. Use for significant operations like deleting data, making external requests, or consuming substantial resources.'
+              },
+              suggestedBudget: {
+                type: 'number',
+                description: 'Optional: Suggest an energy budget for this conversation if you need more resources to complete the task properly.'
               }
             },
             required: ['requestId', 'content']

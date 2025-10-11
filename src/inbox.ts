@@ -33,7 +33,7 @@ export interface ConversationStats {
   urgent_responses: number | null;
 }
 
-const DB_PATH = path.join(process.cwd(), 'conversations.db');
+const DB_PATH = process.env.TEST_DB_PATH || path.join(process.cwd(), 'conversations.db');
 
 export class Inbox {
   private db: Database.Database;
@@ -48,8 +48,9 @@ export class Inbox {
   private getUnansweredCountStmt!: Database.Statement;
   private endConversationStmt!: Database.Statement;
 
-  constructor() {
-    this.db = new Database(DB_PATH);
+  constructor(dbPath?: string) {
+    const finalPath = dbPath || process.env.TEST_DB_PATH || path.join(process.cwd(), 'conversations.db');
+    this.db = new Database(finalPath);
     this.initializeDatabase();
     this.prepareStatements();
   }
@@ -108,6 +109,35 @@ export class Inbox {
       this.db.exec(`ALTER TABLE conversations ADD COLUMN energy_budget REAL DEFAULT NULL`);
     } catch (error) {
       // Column probably already exists, ignore error
+    }
+
+    // Migration: Add approval columns to responses table
+    try {
+      this.db.exec(`ALTER TABLE responses ADD COLUMN requires_approval BOOLEAN DEFAULT FALSE`);
+    } catch (error) {
+      // Column probably already exists, ignore error
+    }
+    try {
+      this.db.exec(`ALTER TABLE responses ADD COLUMN approval_status TEXT DEFAULT NULL`);
+    } catch (error) {
+      // Column probably already exists, ignore error
+    }
+    try {
+      this.db.exec(`ALTER TABLE responses ADD COLUMN approval_timestamp DATETIME DEFAULT NULL`);
+    } catch (error) {
+      // Column probably already exists, ignore error
+    }
+    try {
+      this.db.exec(`ALTER TABLE responses ADD COLUMN approval_feedback TEXT DEFAULT NULL`);
+    } catch (error) {
+      // Column probably already exists, ignore error
+    }
+
+    // Create index for approval queries
+    try {
+      this.db.exec(`CREATE INDEX IF NOT EXISTS idx_response_approval_status ON responses (approval_status)`);
+    } catch (error) {
+      // Index probably already exists, ignore error
     }
   }
 
@@ -514,6 +544,157 @@ export class Inbox {
         avg_energy_level: null,
         urgent_responses: null
       };
+    }
+  }
+
+  // Add an approval request response
+  addApprovalRequest(requestId: string, userMessage: string, content: string, energyLevel: number, modelUsed: string, energyBudget?: number | null) {
+    try {
+      // Get or create conversation
+      let conversation = this.getConversationStmt.get(requestId) as any;
+
+      if (!conversation) {
+        // Create new conversation with optional budget
+        if (energyBudget !== undefined && energyBudget !== null) {
+          const insertWithBudgetStmt = this.db.prepare(`
+            INSERT INTO conversations (request_id, input_message, energy_budget)
+            VALUES (?, ?, ?)
+          `);
+          const insertResult = insertWithBudgetStmt.run(requestId, userMessage, energyBudget);
+          conversation = {
+            id: insertResult.lastInsertRowid,
+            request_id: requestId
+          };
+        } else {
+          const insertResult = this.insertConversationStmt.run(requestId, userMessage);
+          conversation = {
+            id: insertResult.lastInsertRowid,
+            request_id: requestId
+          };
+        }
+      }
+
+      // Add response with approval flag
+      const insertApprovalStmt = this.db.prepare(`
+        INSERT INTO responses (conversation_id, content, energy_level, model_used, requires_approval, approval_status)
+        VALUES (?, ?, ?, ?, TRUE, 'pending')
+      `);
+      insertApprovalStmt.run(conversation.id, content, energyLevel, modelUsed);
+
+      // Update metadata
+      this.updateConversationStmt.run(energyLevel, requestId);
+
+      console.log(`✋ Approval request created for ${requestId}`);
+
+    } catch (error) {
+      console.error('Error adding approval request:', error);
+    }
+  }
+
+  // Update approval status for a response
+  updateApprovalStatus(requestId: string, responseId: number | null, status: 'approved' | 'rejected', feedback?: string) {
+    try {
+      const conversation = this.getConversationStmt.get(requestId) as any;
+      if (!conversation) {
+        console.error(`❌ Conversation ${requestId} not found`);
+        return;
+      }
+
+      let stmt;
+      if (responseId !== null) {
+        // Update specific response
+        stmt = this.db.prepare(`
+          UPDATE responses
+          SET approval_status = ?, approval_timestamp = datetime('now'), approval_feedback = ?
+          WHERE id = ? AND conversation_id = ?
+        `);
+        stmt.run(status, feedback || null, responseId, conversation.id);
+      } else {
+        // Update most recent pending approval
+        stmt = this.db.prepare(`
+          UPDATE responses
+          SET approval_status = ?, approval_timestamp = datetime('now'), approval_feedback = ?
+          WHERE id = (
+            SELECT id FROM responses
+            WHERE conversation_id = ? AND approval_status = 'pending'
+            ORDER BY timestamp DESC
+            LIMIT 1
+          )
+        `);
+        stmt.run(status, feedback || null, conversation.id);
+      }
+
+      console.log(`${status === 'approved' ? '✅' : '❌'} Approval ${status} for ${requestId}`);
+
+    } catch (error) {
+      console.error('Error updating approval status:', error);
+    }
+  }
+
+  // Get all pending approvals for a conversation
+  getPendingApprovals(requestId: string): Array<{ id: number; content: string; timestamp: string; energyLevel: number; modelUsed: string }> {
+    try {
+      const conversation = this.getConversationStmt.get(requestId) as any;
+      if (!conversation) {
+        return [];
+      }
+
+      const stmt = this.db.prepare(`
+        SELECT id, content, timestamp, energy_level as energyLevel, model_used as modelUsed
+        FROM responses
+        WHERE conversation_id = ? AND approval_status = 'pending'
+        ORDER BY timestamp DESC
+      `);
+      const rows = stmt.all(conversation.id) as Array<{ id: number; content: string; timestamp: string; energyLevel: number; modelUsed: string }>;
+      return rows;
+    } catch (error) {
+      console.error('Error getting pending approvals:', error);
+      return [];
+    }
+  }
+
+  // Get the latest pending approval for a conversation
+  getLatestPendingApproval(requestId: string): { id: number; content: string; timestamp: string; energyLevel: number; modelUsed: string } | null {
+    try {
+      const conversation = this.getConversationStmt.get(requestId) as any;
+      if (!conversation) {
+        return null;
+      }
+
+      const stmt = this.db.prepare(`
+        SELECT id, content, timestamp, energy_level as energyLevel, model_used as modelUsed
+        FROM responses
+        WHERE conversation_id = ? AND approval_status = 'pending'
+        ORDER BY id DESC
+        LIMIT 1
+      `);
+      const row = stmt.get(conversation.id) as { id: number; content: string; timestamp: string; energyLevel: number; modelUsed: string } | undefined;
+      return row || null;
+    } catch (error) {
+      console.error('Error getting latest pending approval:', error);
+      return null;
+    }
+  }
+
+  // Get all approvals (pending, approved, rejected) for a conversation
+  getAllApprovals(requestId: string): Array<{ id: number; content: string; timestamp: string; status: string; approvalTimestamp: string | null; feedback: string | null }> {
+    try {
+      const conversation = this.getConversationStmt.get(requestId) as any;
+      if (!conversation) {
+        return [];
+      }
+
+      const stmt = this.db.prepare(`
+        SELECT id, content, timestamp, approval_status as status, approval_timestamp as approvalTimestamp, approval_feedback as feedback
+        FROM responses
+        WHERE conversation_id = ? AND requires_approval = TRUE
+        ORDER BY timestamp DESC
+      `);
+      const rows = stmt.all(conversation.id) as Array<{ id: number; content: string; timestamp: string; status: string; approvalTimestamp: string | null; feedback: string | null }>;
+      return rows;
+    } catch (error) {
+      console.error('Error getting all approvals:', error);
+      return [];
     }
   }
 }

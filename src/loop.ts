@@ -125,12 +125,19 @@ Key rules:
 6. Use await_energy to wait for energy recovery - THIS IS YOUR OWN ENERGY MANAGEMENT TOOL, NOT AN MCP TOOL
 
 Energy Budget Management:
-- Some conversations may have an energy budget (soft target) specified by the user
+- Conversations can have energy budgets to allocate resources for specific tasks
 - Budget of 0 means this is your LAST CHANCE to respond - make it count with critical information
-- Budget > 0 means aim to stay within that energy allocation, but you can exceed if necessary
 - No budget means use your normal energy management strategy
 - Budget is a SOFT target - prioritize quality over strict adherence
 - When budget is low or exceeded, focus on wrapping up efficiently
+- Use the 'suggestedBudget' parameter in respond to suggest energy allocation
+
+Approval System:
+- Set 'requiresApproval: true' in respond when proposing actions that need user confirmation
+- Use this for potentially risky, significant, or resource-intensive actions (e.g., deleting data, external requests)
+- When a user approves/rejects, you'll receive feedback in the conversation context
+- Approval requests consume energy but allow users to control what you do
+- Users can approve/reject and also adjust budgets in their approval responses
 
 MCP (Model Context Protocol) Tools:
 - You have access to MCP servers that provide additional capabilities
@@ -438,6 +445,49 @@ Your energy affects your responses:
     }
   }
 
+  private async respondWithApproval(requestId: string, responseContent: string, energyBudget?: number) {
+    try {
+      // Validate response content
+      if (!responseContent || typeof responseContent !== 'string') {
+        console.error(`❌ Invalid approval response content for ${requestId}: ${typeof responseContent}`);
+        return;
+      }
+
+      console.log(`✋ Approval request for ${requestId}: ${this.truncateText(responseContent)}`);
+
+      // Get conversation to retrieve user message
+      const conversation = this.inbox.getConversation(requestId);
+      if (!conversation) {
+        console.error(`❌ No conversation found for ${requestId}`);
+        const errorThought = `I tried to create an approval request for conversation ${requestId}, but it doesn't exist.`;
+        if (this.selectedConversationId) {
+          this.conversationThoughtManager.addThought(errorThought);
+        } else {
+          this.reviewThoughtManager.addThought(errorThought);
+        }
+        return;
+      }
+
+      // Add approval request to inbox
+      const userMessage = conversation.inputMessage;
+      let energyLevel = this.energyRegulator.getEnergy();
+      const modelUsed = this.intelligentModel.getCurrentModel();
+      
+      // Defensive: ensure energy is never NaN before saving to database
+      if (isNaN(energyLevel) || energyLevel === null || energyLevel === undefined) {
+        console.error(`⚠️ Energy level is invalid (${energyLevel}), using 0 instead`);
+        energyLevel = 0;
+      }
+
+      this.inbox.addApprovalRequest(requestId, userMessage, responseContent, energyLevel, modelUsed, energyBudget);
+
+      // Don't remove from pending - approval requests keep conversation in pending state until approved/rejected
+
+    } catch (error: any) {
+      console.error(`❌ Error creating approval request for ${requestId}:`, error);
+    }
+  }
+
   private async handleSelectedConversation(totalConversations: number, unansweredConversations: number) {
     if (!this.selectedConversationId) return;
 
@@ -503,12 +553,25 @@ Your energy affects your responses:
     try {
       if (name === 'respond') {
         try {
-          const { requestId, content } = JSON.parse(args);
+          const { requestId, content, requiresApproval, suggestedBudget } = JSON.parse(args);
           if (!requestId || !content) {
             console.log(`💬 Respond tool call missing required fields. requestId: ${requestId}, content: ${content}`);
             return;
           }
-          await this.respondToRequest(this.extractValidConversationId(requestId), content);
+          const validRequestId = this.extractValidConversationId(requestId);
+          
+          // Handle suggested budget if provided
+          if (suggestedBudget !== undefined && suggestedBudget !== null && typeof suggestedBudget === 'number' && suggestedBudget >= 0) {
+            this.inbox.setEnergyBudget(validRequestId, suggestedBudget);
+            console.log(`💰 Budget suggestion: ${suggestedBudget} for ${validRequestId}`);
+          }
+          
+          // Handle approval request or regular response
+          if (requiresApproval === true) {
+            await this.respondWithApproval(validRequestId, content, suggestedBudget);
+          } else {
+            await this.respondToRequest(validRequestId, content);
+          }
         } catch (parseError) {
           console.log(`💬 Malformed respond tool call with args "${args}", ignoring`);
         }
