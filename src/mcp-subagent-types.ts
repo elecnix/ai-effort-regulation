@@ -62,8 +62,27 @@ export interface SubAgentMetrics {
 export interface MCPServerConfig {
   id: string;
   name: string;
-  command: string;
-  args: string[];
-  env?: Record<string, string>;
   enabled: boolean;
+  
+  // Transport type
+  transport: 'stdio' | 'http';
+  
+  // STDIO-specific config
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  
+  // HTTP-specific config
+  url?: string;
+  headers?: Record<string, string>;
+  timeout?: number;
+  retries?: number;
+  
+  // Authentication
+  auth?: {
+    type: 'none' | 'apikey' | 'bearer';
+    apiKey?: string;
+    token?: string;
+    headerName?: string;
+  };
 }

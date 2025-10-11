@@ -648,11 +648,8 @@ Your energy affects your responses:
         return;
       }
       
-      // Call the tool
-      const result = await connection.client.callTool({
-        name: toolName,
-        arguments: toolArgs
-      });
+      // Call the tool using the client manager
+      const result = await this.mcpClient.callTool(serverId, toolName, toolArgs);
       
       console.log(`✅ MCP tool result:`, this.truncateText(JSON.stringify(result)));
       
