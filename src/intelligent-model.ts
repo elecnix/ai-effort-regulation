@@ -154,7 +154,16 @@ export class IntelligentModel {
     // Energy consumption based on energy per prompt for the model
     const config = this.modelConsumption.find(t => t.model === model);
     const defaultConsumption = 10; // Depletion rate of 1 unit per second provides 10 seconds of runtime (10/100)
-    return config ? config.energyPerPrompt : defaultConsumption;
+    
+    if (!config) {
+      // For unknown models (e.g., OpenRouter models), return default
+      if (this.debugMode) {
+        console.log(`⚠️ Unknown model "${model}", using default energy consumption: ${defaultConsumption}`);
+      }
+      return defaultConsumption;
+    }
+    
+    return config.energyPerPrompt;
   }
 
   /**

@@ -103,7 +103,7 @@ Key rules:
 3. Use the think tool only for internal reflection when the next action is unclear
 4. Use end_conversation when a conversation is complete
 5. Use snooze_conversation to delay handling a conversation
-6. Use await_energy to wait for energy recovery
+6. Use await_energy to wait for energy recovery - THIS IS YOUR OWN ENERGY MANAGEMENT TOOL, NOT AN MCP TOOL
 
 MCP (Model Context Protocol) Tools:
 - You have access to MCP servers that provide additional capabilities
@@ -111,6 +111,7 @@ MCP (Model Context Protocol) Tools:
 - Use mcp_list_servers to see what servers are available
 - Use mcp_call_tool to invoke tools from connected MCP servers
 - The MCP sub-agent handles server management asynchronously in the background
+- IMPORTANT: await_energy, respond, think, end_conversation, snooze_conversation, and select_conversation are YOUR CORE TOOLS, NOT MCP tools
 
 Your energy affects your responses:
 - High energy (>50%): Normal, detailed responses
@@ -457,7 +458,14 @@ Your energy affects your responses:
         }
       } else if (name === 'await_energy') {
         try {
-          const { level } = JSON.parse(args);
+          const parsed = JSON.parse(args);
+          const level = parsed.level;
+          
+          if (level === undefined || level === null || isNaN(level)) {
+            console.log(`💤 Invalid energy level in await_energy: ${level}, args: "${args}"`);
+            return;
+          }
+          
           await this.energyRegulator.awaitEnergyLevel(level);
         } catch (parseError) {
           console.log(`💤 Malformed await_energy tool call with args "${args}", ignoring`);
