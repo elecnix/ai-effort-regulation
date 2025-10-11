@@ -6,14 +6,15 @@
 
 1. [Introduction](#introduction)
 2. [Quick Start](#quick-start)
-3. [Core Concepts](#core-concepts)
-4. [Using the System](#using-the-system)
-5. [Energy Budget Feature](#energy-budget-feature)
-6. [MCP Integration](#mcp-integration)
-7. [API Reference](#api-reference)
-8. [Testing & Verification](#testing--verification)
-9. [Troubleshooting](#troubleshooting)
-10. [Advanced Configuration](#advanced-configuration)
+3. [Monitor UI](#monitor-ui)
+4. [Core Concepts](#core-concepts)
+5. [Using the System](#using-the-system)
+6. [Energy Budget Feature](#energy-budget-feature)
+7. [MCP Integration](#mcp-integration)
+8. [API Reference](#api-reference)
+9. [Testing & Verification](#testing--verification)
+10. [Troubleshooting](#troubleshooting)
+11. [Advanced Configuration](#advanced-configuration)
 
 ---
 
@@ -23,6 +24,7 @@ The AI Effort Regulation system is an intelligent AI assistant that manages its 
 
 ### Key Features
 
+- **🖥️ Monitor UI**: Real-time web dashboard for system observation and interaction
 - **🔋 Energy Management**: Leaky bucket algorithm regulates computational effort
 - **🧠 Adaptive Behavior**: Response quality adjusts to energy levels
 - **💰 Energy Budgets**: User-guided effort allocation per conversation
@@ -88,7 +90,24 @@ npm run debug
 npm run debug -- --duration=60
 ```
 
-### Your First Message
+### Your First Interaction
+
+**Option 1: Monitor UI (Recommended)**
+
+Open your browser and navigate to:
+```
+http://localhost:6740/
+```
+
+You'll see a real-time dashboard with:
+- Energy gauge showing current energy level
+- Conversation list on the left
+- Chat interface in the center
+- Live event stream on the right
+
+Simply type a message and click Send!
+
+**Option 2: REST API**
 
 ```bash
 # Send a message
@@ -102,6 +121,115 @@ curl http://localhost:6740/stats
 # View health
 curl http://localhost:6740/health
 ```
+
+---
+
+## Monitor UI
+
+The **Monitor UI** is a real-time web dashboard that provides unprecedented visibility into the AI's cognitive processes. It's the recommended way to interact with the system for development, debugging, and demonstrations.
+
+### Accessing the Monitor UI
+
+Once the system is running, open your browser to:
+```
+http://localhost:6740/
+```
+
+### Interface Overview
+
+The Monitor UI consists of four main sections:
+
+#### 1. System Health Bar (Top)
+- **Energy Gauge**: Visual representation with color coding
+  - 🟢 Green (>50%): High energy, normal operation
+  - 🟡 Yellow (20-50%): Medium energy, efficient mode
+  - 🟠 Orange (0-20%): Low energy, conservation mode
+  - 🔴 Red (<0%): Urgent mode, critical
+- **Statistics**: Conversations, responses, uptime, average energy
+- **Real-time Updates**: Refreshes automatically
+
+#### 2. Conversation List (Left Panel)
+- All conversations with state indicators
+- Click to view conversation details
+- Shows message count and energy consumed
+- Color-coded states (green=active, yellow=snoozed, gray=ended)
+
+#### 3. Chat Panel (Center)
+- **Send Messages**: Type and send with optional energy budgets
+- **View History**: See all messages in selected conversation
+- **Metadata**: Model used, energy level, timestamps
+- **Connection Status**: WebSocket connection indicator
+
+#### 4. Event Stream (Right Panel)
+- **Real-time Events**: Live feed of system events
+- **Color-Coded**: Different colors for different event types
+  - 🟡 Yellow: Energy updates
+  - 🔵 Blue: Conversation/message events
+  - 🟣 Purple: Model switches
+  - 🟠 Orange: Sleep cycles
+  - 🟢 Green: Tool invocations
+- **Auto-Scroll**: Automatically shows latest events
+- **History**: Keeps last 100 events
+
+### Using the Monitor UI
+
+#### Sending a Message
+
+1. Type your message in the input field
+2. (Optional) Enter an energy budget (e.g., 20)
+3. Click Send or press Enter
+4. Watch the system process in real-time:
+   - Energy gauge updates
+   - Events stream in
+   - Response appears
+   - Conversation list updates
+
+#### Energy Budget Guidelines
+
+- **Leave empty**: System manages energy automatically
+- **5-10**: Quick, concise responses
+- **20-30**: Standard responses
+- **40-60**: Detailed, complex analysis
+- **0**: Emergency "last chance" mode
+
+#### Monitoring System Behavior
+
+Use the Monitor UI to observe:
+- **Energy Dynamics**: Watch energy decrease during processing and recover during idle
+- **Model Switches**: See when and why the system switches between models
+- **Sleep Cycles**: Observe recovery periods when energy is very low
+- **Tool Usage**: Track MCP tool invocations
+- **Conversation Flow**: Understand how conversations are prioritized
+
+### WebSocket Protocol
+
+The Monitor UI uses WebSocket for bi-directional communication:
+
+**Client → Server**:
+- `send_message`: Send new message
+- `get_conversations`: Request conversation list
+- `get_conversation`: Request conversation detail
+- `get_stats`: Request system statistics
+
+**Server → Client** (Broadcasts):
+- `connected`: Connection established
+- `energy_update`: Energy level changed
+- `conversation_created`: New conversation
+- `message_added`: New message
+- `conversation_state_changed`: State transition
+- `model_switched`: Model change
+- `sleep_start`/`sleep_end`: Sleep cycles
+- `tool_invocation`: Tool called
+- `system_stats`: Statistics update
+
+### For More Details
+
+See the comprehensive [Monitor UI Guide](./MONITOR-UI-GUIDE.md) for:
+- Detailed feature explanations
+- Common use cases
+- Troubleshooting
+- Keyboard shortcuts
+- Technical details
 
 ---
 
