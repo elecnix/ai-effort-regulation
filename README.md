@@ -397,6 +397,49 @@ Uninstall an app.
 }
 ```
 
+### GET /apps/:appId/memories
+List memories for an app.
+
+**Response:**
+```json
+{
+  "appId": "chat",
+  "count": 3,
+  "memories": [
+    {
+      "id": 1,
+      "content": "User prefers meetings after 2pm on weekdays.",
+      "createdAt": "2025-10-11T14:30:00.000Z",
+      "updatedAt": "2025-10-11T14:30:00.000Z",
+      "sourceConversationId": "abc-123"
+    }
+  ]
+}
+```
+
+### DELETE /apps/:appId/memories
+Purge all memories for an app.
+
+**Response:**
+```json
+{
+  "success": true,
+  "appId": "chat",
+  "deletedCount": 8
+}
+```
+
+### DELETE /apps/:appId/memories/:memoryId
+Delete a specific memory.
+
+**Response:**
+```json
+{
+  "success": true,
+  "memoryId": 1
+}
+```
+
 ## 🎨 Key Features
 
 ### Core Capabilities
@@ -409,13 +452,20 @@ Uninstall an app.
 - **Real-time Analytics**: System performance monitoring
 - **Adaptive Sleep**: Energy replenishment when idle
 
-### Multi-App Architecture (NEW!)
+### Multi-App Architecture
 - **App Registry**: Install, manage, and monitor multiple apps
 - **Conversation Isolation**: Each app only sees its own conversations
 - **Per-App Energy Tracking**: Monitor energy consumption by app with time windows
 - **Message Routing**: Automatic routing of responses to originating apps
 - **Extensible Design**: Easy to add new apps (Gmail, Calendar, etc.)
 - **App Lifecycle Management**: Install, start, stop, uninstall apps
+
+### Memory System (NEW!)
+- **Automatic Memory Creation**: Memories are created when conversations end
+- **App-Scoped Memories**: Each app has its own isolated memory space (10 records max)
+- **Intelligent Compaction**: LLM-based decisions on which memories to keep/merge/delete
+- **Context Injection**: Memories automatically included in relevant conversations
+- **Memory Management API**: View and purge memories via REST endpoints
 
 ### MCP Integration
 - **Extensible Tool System**: Unified interface for MCP tools

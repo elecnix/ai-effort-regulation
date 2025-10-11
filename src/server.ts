@@ -447,6 +447,81 @@ app.delete('/apps/:appId', async (req, res) => {
   }
 });
 
+// Memory management endpoints
+app.get('/apps/:appId/memories', (req, res) => {
+  try {
+    const { appId } = req.params;
+    const globalLoop = global.sensitiveLoop;
+    const memorySubAgent = globalLoop?.getMemorySubAgent?.();
+    
+    if (!memorySubAgent) {
+      res.status(500).json({ error: 'Memory sub-agent not available' });
+      return;
+    }
+    
+    const memories = memorySubAgent.getMemories(appId, 10);
+    
+    res.json({
+      appId,
+      count: memories.length,
+      memories: memories.map(m => ({
+        id: m.id,
+        content: m.content,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+        sourceConversationId: m.sourceConversationId
+      }))
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/apps/:appId/memories', (req, res) => {
+  try {
+    const { appId } = req.params;
+    const globalLoop = global.sensitiveLoop;
+    const memorySubAgent = globalLoop?.getMemorySubAgent?.();
+    
+    if (!memorySubAgent) {
+      res.status(500).json({ error: 'Memory sub-agent not available' });
+      return;
+    }
+    
+    const deletedCount = memorySubAgent.deleteAppMemories(appId);
+    
+    res.json({
+      success: true,
+      appId,
+      deletedCount
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/apps/:appId/memories/:memoryId', (req, res) => {
+  try {
+    const { memoryId } = req.params;
+    const globalLoop = global.sensitiveLoop;
+    const memorySubAgent = globalLoop?.getMemorySubAgent?.();
+    
+    if (!memorySubAgent) {
+      res.status(500).json({ error: 'Memory sub-agent not available' });
+      return;
+    }
+    
+    memorySubAgent.deleteMemory(parseInt(memoryId));
+    
+    res.json({
+      success: true,
+      memoryId: parseInt(memoryId)
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/health', (req, res) => {
   // Comprehensive health check
   const globalLoop = global.sensitiveLoop;

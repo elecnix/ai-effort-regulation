@@ -6,6 +6,7 @@ import { ThoughtManager } from './thoughts';
 import { MCPSubAgent } from './mcp-subagent';
 import { MCPClientManager } from './mcp-client';
 import { AppRegistry, ChatApp } from './apps';
+import { MemorySubAgent } from './memory-subagent';
 
 interface ConversationEntry {
   role: 'user' | 'assistant' | 'system';
@@ -26,6 +27,7 @@ export class SensitiveLoop {
   private conversationThoughtManager: ThoughtManager; // For focused conversation thoughts (in-memory)
   private mcpSubAgent: MCPSubAgent;
   private mcpClient: MCPClientManager;
+  private memorySubAgent: MemorySubAgent;
   private appRegistry: AppRegistry;
   private chatApp: ChatApp;
   private isRunning = false;
@@ -42,6 +44,7 @@ export class SensitiveLoop {
     this.mcpSubAgent = new MCPSubAgent(debugMode);
     this.mcpClient = new MCPClientManager();
     this.appRegistry = new AppRegistry(this.inbox.getDatabase());
+    this.memorySubAgent = new MemorySubAgent(this.inbox.getDatabase(), debugMode);
     this.chatApp = new ChatApp(this.appRegistry, this.inbox);
     this.appRegistry.registerApp(this.chatApp);
   }
@@ -100,6 +103,10 @@ export class SensitiveLoop {
 
   getChatApp(): ChatApp {
     return this.chatApp;
+  }
+
+  getMemorySubAgent(): MemorySubAgent {
+    return this.memorySubAgent;
   }
 
   // Handle incoming messages from apps
@@ -227,6 +234,15 @@ Your energy affects your responses:
         }
       }
       
+      // Poll Memory sub-agent for energy consumption
+      const memoryEnergy = this.memorySubAgent.getEnergyConsumedSinceLastPoll();
+      if (memoryEnergy > 0) {
+        this.energyRegulator.consumeEnergy(memoryEnergy);
+        if (this.debugMode) {
+          console.log(`⚡ Memory Sub-Agent consumed ${memoryEnergy.toFixed(1)} energy`);
+        }
+      }
+      
       // Poll MCP sub-agent for messages
       const subAgentMessages = this.mcpSubAgent.pollMessages();
       for (const msg of subAgentMessages) {
@@ -320,7 +336,35 @@ Your energy affects your responses:
 
   private getSystemMessage(targetConversation: { id: string; requestMessage: string; responseMessages: string[]; timestamp: Date } | null | undefined) {
     let message = !targetConversation ? this.systemMessage : this.systemMessage + '\n\n' + this.systemInboxMessage;
+    
+    if (targetConversation) {
+      const appId = this.appRegistry.getAppIdForConversation(targetConversation.id) || 'chat';
+      const memories = this.memorySubAgent.getMemories(appId, 10);
+      
+      if (memories.length > 0) {
+        const memoryContext = this.formatMemoriesForContext(memories, appId);
+        message = message + '\n\n' + memoryContext;
+      }
+    }
+    
     return { role: 'system', content: message };
+  }
+
+  private formatMemoriesForContext(memories: any[], appId: string): string {
+    const app = this.appRegistry.getApp(appId);
+    const appName = app?.name || appId;
+    
+    let context = `(memories for app: ${appName})\n`;
+    context += 'The following are memories from previous conversations with this app:\n\n';
+    
+    memories.forEach((memory, index) => {
+      const date = new Date(memory.createdAt).toISOString().split('T')[0];
+      context += `${index + 1}. [${date}] ${memory.content}\n`;
+    });
+    
+    context += '\nUse these memories to provide context-aware responses.';
+    
+    return context;
   }
 
   private getThoughts(isConversationFocused: boolean = false): Array<{ role: string; content: string }> {
@@ -661,14 +705,19 @@ Your energy affects your responses:
       } else if (name === 'end_conversation') {
         try {
           const { requestId, reason } = JSON.parse(args);
+          const validId = this.extractValidConversationId(requestId);
           // Mark the current conversation as ended in the database
-          this.inbox.endConversation(this.extractValidConversationId(requestId), reason);
+          this.inbox.endConversation(validId, reason);
           // Clear the current conversation selection
           this.selectedConversationId = null;
           // Add a thought about ending the conversation if reason provided
           if (reason && reason.trim()) {
             this.reviewThoughtManager.addThought(`Ended focused conversation work: ${reason}`);
           }
+          // Trigger memory creation (async, don't wait)
+          this.createMemoryForConversation(validId, reason || 'Conversation ended').catch(error => {
+            console.error(`❌ Memory creation failed for ${validId}: ${error.message}`);
+          });
         } catch (parseError) {
           console.log(`🏁 Malformed end_conversation tool call with args "${args}", ignoring`);
         }
@@ -816,6 +865,36 @@ Your energy affects your responses:
       console.error(`❌ Error calling MCP tool ${toolName}:`, error?.message || error);
       const thought = `Error calling MCP tool "${toolName}": ${error?.message || error}`;
       this.reviewThoughtManager.addThought(thought);
+    }
+  }
+
+  private async createMemoryForConversation(conversationId: string, reason: string): Promise<void> {
+    try {
+      const conversation = this.inbox.getConversation(conversationId);
+      if (!conversation) {
+        return;
+      }
+      
+      const appId = this.appRegistry.getAppIdForConversation(conversationId) || 'chat';
+      
+      const userMessages = [conversation.inputMessage];
+      const assistantMessages = conversation.responses.map(r => r.content);
+      
+      const request = {
+        appId,
+        conversationId,
+        conversationSummary: `Ended: ${reason}`,
+        userMessages,
+        assistantMessages
+      };
+      
+      const memory = await this.memorySubAgent.createMemory(request);
+      
+      if (memory && this.debugMode) {
+        console.log(`📝 Memory created for conversation ${conversationId}`);
+      }
+    } catch (error: any) {
+      console.error(`❌ Error creating memory: ${error.message}`);
     }
   }
 }
