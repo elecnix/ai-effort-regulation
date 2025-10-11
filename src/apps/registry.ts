@@ -271,6 +271,21 @@ export class AppRegistry {
     }
   }
   
+  getAppIdForConversation(conversationId: string): string | null {
+    try {
+      const stmt = this.db.prepare(`
+        SELECT app_id FROM app_conversations
+        WHERE conversation_id = ?
+        LIMIT 1
+      `);
+      const row = stmt.get(conversationId) as { app_id: string } | undefined;
+      return row ? row.app_id : null;
+    } catch (error) {
+      console.error('Error getting app ID for conversation:', error);
+      return null;
+    }
+  }
+  
   private validateConfig(config: AppConfig): void {
     if (!config.id || typeof config.id !== 'string') {
       throw new Error('App config must have a valid id');
