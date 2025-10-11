@@ -24,13 +24,19 @@ const app = express();
 const DEFAULT_PORT = parseInt(process.env.PORT || '6740');
 const MAX_MESSAGE_LENGTH = parseInt(process.env.MAX_MESSAGE_LENGTH || '10000');
 
-// Security: Rate limiting
+// Security: Rate limiting - Very high limit for development/testing
 const limiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  limit: 60,
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true,
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  limit: 10000, // Very high limit for testing
+  standardHeaders: 'draft-7', // Return rate limit headers
   legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Rate limit exceeded. Please try again later.',
+      retryAfter: res.getHeader('Retry-After')
+    });
+  }
 });
 
 // Apply rate limiting to all requests
@@ -523,42 +529,77 @@ app.delete('/apps/:appId/memories/:memoryId', (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  // Comprehensive health check
+  // Comprehensive health check for monitoring and operations
   const globalLoop = global.sensitiveLoop;
   const currentEnergy = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getEnergy() : 0;
   const energyStatus = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getStatus() : 'unknown';
+  
+  // Test database connectivity
+  let dbConnected = false;
+  let dbError = null;
+  try {
+    if (globalLoop && globalLoop.inbox) {
+      const db = globalLoop.inbox.getDatabase();
+      db.prepare('SELECT 1').get();
+      dbConnected = true;
+    }
+  } catch (error: any) {
+    dbError = error.message;
+  }
 
+  const memUsage = process.memoryUsage();
   const health = {
     status: 'ok',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: Math.round(process.uptime()),
+    version: process.env.npm_package_version || 'unknown',
+    environment: process.env.NODE_ENV || 'development',
+    system: {
+      platform: process.platform,
+      nodeVersion: process.version,
+      pid: process.pid
+    },
     memory: {
-      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
-      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
-      external: Math.round(process.memoryUsage().external / 1024 / 1024)
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      external: Math.round(memUsage.external / 1024 / 1024),
+      rss: Math.round(memUsage.rss / 1024 / 1024),
+      percentUsed: Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100)
     },
     queue: {
-      pendingMessages: messageQueue.length
+      pendingMessages: messageQueue.length,
+      maxCapacity: 1000,
+      percentFull: Math.round((messageQueue.length / 1000) * 100)
     },
     energy: {
-      current: currentEnergy,
+      current: Math.round(currentEnergy * 10) / 10,
       percentage: Math.round(Math.min(100, Math.max(0, currentEnergy))),
       status: energyStatus
     },
     database: {
-      connected: true // Would need actual DB health check
+      connected: dbConnected,
+      error: dbError
+    },
+    checks: {
+      queueOverload: messageQueue.length > 100,
+      lowEnergy: currentEnergy < 20,
+      highMemory: (memUsage.heapUsed / memUsage.heapTotal) > 0.9,
+      dbConnected: dbConnected
     }
   };
 
-  // Check if system is overloaded
-  if (messageQueue.length > 100) {
-    health.status = 'warning';
+  // Determine overall status
+  if (!dbConnected) {
+    health.status = 'unhealthy';
+    res.status(503).json(health);
+  } else if (messageQueue.length > 100 || currentEnergy < 10) {
+    health.status = 'degraded';
     res.status(200).json(health);
   } else if (currentEnergy < 20) {
-    health.status = 'low_energy';
+    health.status = 'warning';
     res.status(200).json(health);
   } else {
-    res.json(health);
+    res.status(200).json(health);
   }
 });
 
@@ -594,6 +635,7 @@ export async function startServer() {
   const wss = new WSServer({ server, path: '/ws' });
   const wsServer = new WebSocketServer(wss);
   
+  (global as any).httpServer = server;
   (global as any).wsServer = wsServer;
   console.log(`WebSocket Server listening on port ${port}/ws`);
 

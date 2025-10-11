@@ -2,6 +2,7 @@ import { startServer } from './server';
 import { SensitiveLoop } from './loop';
 import { ProviderConfiguration } from './provider-config';
 import { EventBridge } from './event-bridge';
+import { validateEnvVariables } from './validation';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -61,6 +62,14 @@ const sensitiveLoop = new SensitiveLoop(debugMode, replenishRate);
 async function main() {
   console.log('Starting AI Effort Regulation Demo...');
 
+  // Validate environment variables
+  try {
+    validateEnvVariables();
+  } catch (error) {
+    console.error(`❌ Environment validation failed: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
+
   // Validate provider configuration
   const provider = process.env.AI_PROVIDER || 'ollama';
   try {
@@ -85,17 +94,79 @@ async function main() {
   await sensitiveLoop.start(durationSeconds);
 }
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('Shutting down...');
-  sensitiveLoop.stop();
-  process.exit(0);
+// Graceful shutdown handler
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal: string) {
+  if (isShuttingDown) {
+    console.log('⚠️  Shutdown already in progress...');
+    return;
+  }
+  
+  isShuttingDown = true;
+  console.log(`\n🛑 Received ${signal}, starting graceful shutdown...`);
+  
+  try {
+    // Stop accepting new requests
+    const globalLoop = (global as any).sensitiveLoop;
+    const server = (global as any).httpServer;
+    const wsServer = (global as any).wsServer;
+    
+    // Close WebSocket server
+    if (wsServer) {
+      console.log('📡 Closing WebSocket connections...');
+      wsServer.close();
+    }
+    
+    // Close HTTP server
+    if (server) {
+      console.log('🌐 Closing HTTP server...');
+      await new Promise<void>((resolve) => {
+        server.close(() => {
+          console.log('✅ HTTP server closed');
+          resolve();
+        });
+      });
+    }
+    
+    // Stop the sensitive loop
+    if (globalLoop) {
+      console.log('🔄 Stopping cognitive loop...');
+      globalLoop.stop();
+    }
+    
+    // Close database connections
+    if (globalLoop && globalLoop.inbox) {
+      console.log('💾 Closing database...');
+      const db = globalLoop.inbox.getDatabase();
+      db.close();
+    }
+    
+    console.log('✅ Graceful shutdown complete');
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ Error during shutdown:', error);
+    process.exit(1);
+  }
+}
+
+// Handle various termination signals
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGHUP', () => gracefulShutdown('SIGHUP'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  gracefulShutdown('uncaughtException');
 });
 
-process.on('SIGTERM', () => {
-  console.log('Shutting down...');
-  sensitiveLoop.stop();
-  process.exit(0);
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('unhandledRejection');
 });
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error('❌ Fatal error:', error);
+  process.exit(1);
+});
