@@ -58,7 +58,7 @@ export class Inbox {
   // Remove the old open method
 
   private initializeDatabase() {
-    // Create tables
+    // Create tables with all columns (no migrations needed - fresh install)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS conversations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,7 +68,11 @@ export class Inbox {
         total_energy_consumed INTEGER DEFAULT 0,
         sleep_cycles INTEGER DEFAULT 0,
         ended BOOLEAN DEFAULT FALSE,
-        ended_reason TEXT
+        ended_reason TEXT,
+        snooze_until DATETIME,
+        snooze_duration INTEGER DEFAULT 0,
+        energy_budget REAL DEFAULT NULL,
+        app_id TEXT DEFAULT 'chat'
       );
 
       CREATE TABLE IF NOT EXISTS responses (
@@ -78,74 +82,17 @@ export class Inbox {
         content TEXT NOT NULL,
         energy_level INTEGER NOT NULL,
         model_used TEXT NOT NULL,
+        requires_approval BOOLEAN DEFAULT FALSE,
+        approval_status TEXT DEFAULT NULL,
+        approval_timestamp DATETIME DEFAULT NULL,
+        approval_feedback TEXT DEFAULT NULL,
         FOREIGN KEY (conversation_id) REFERENCES conversations (id)
       );
 
       CREATE INDEX IF NOT EXISTS idx_conversation_request_id ON conversations (request_id);
       CREATE INDEX IF NOT EXISTS idx_response_conversation_id ON responses (conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_response_approval_status ON responses (approval_status);
     `);
-
-    // Migration: Add ended_reason column if it doesn't exist
-    try {
-      this.db.exec(`ALTER TABLE conversations ADD COLUMN ended_reason TEXT`);
-    } catch (error) {
-      // Column probably already exists, ignore error
-    }
-
-    // Migration: Add snooze columns if they don't exist
-    try {
-      this.db.exec(`ALTER TABLE conversations ADD COLUMN snooze_until DATETIME`);
-    } catch (error) {
-      // Column probably already exists, ignore error
-    }
-    try {
-      this.db.exec(`ALTER TABLE conversations ADD COLUMN snooze_duration INTEGER DEFAULT 0`);
-    } catch (error) {
-      // Column probably already exists, ignore error
-    }
-
-    // Migration: Add energy budget columns if they don't exist
-    try {
-      this.db.exec(`ALTER TABLE conversations ADD COLUMN energy_budget REAL DEFAULT NULL`);
-    } catch (error) {
-      // Column probably already exists, ignore error
-    }
-
-    // Migration: Add approval columns to responses table
-    try {
-      this.db.exec(`ALTER TABLE responses ADD COLUMN requires_approval BOOLEAN DEFAULT FALSE`);
-    } catch (error) {
-      // Column probably already exists, ignore error
-    }
-    try {
-      this.db.exec(`ALTER TABLE responses ADD COLUMN approval_status TEXT DEFAULT NULL`);
-    } catch (error) {
-      // Column probably already exists, ignore error
-    }
-    try {
-      this.db.exec(`ALTER TABLE responses ADD COLUMN approval_timestamp DATETIME DEFAULT NULL`);
-    } catch (error) {
-      // Column probably already exists, ignore error
-    }
-    try {
-      this.db.exec(`ALTER TABLE responses ADD COLUMN approval_feedback TEXT DEFAULT NULL`);
-    } catch (error) {
-      // Column probably already exists, ignore error
-    }
-
-    // Create index for approval queries
-    try {
-      this.db.exec(`CREATE INDEX IF NOT EXISTS idx_response_approval_status ON responses (approval_status)`);
-    } catch (error) {
-      // Index probably already exists, ignore error
-    }
-
-    // Migration: Add app_id column for multi-app support
-    try {
-      this.db.exec(`ALTER TABLE conversations ADD COLUMN app_id TEXT DEFAULT 'chat'`);
-    } catch (error) {
-      // Column probably already exists, ignore error
-    }
   }
 
   private prepareStatements() {

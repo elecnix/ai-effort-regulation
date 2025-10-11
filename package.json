@@ -37,6 +37,8 @@
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^20.19.20",
     "@types/node-fetch": "^2.6.11",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
     "@types/uuid": "^9.0.7",
     "@types/ws": "^8.18.1",
     "nodemon": "^3.0.2",
@@ -54,6 +56,8 @@
     "fs-extra": "^11.2.0",
     "node-fetch": "^2.7.0",
     "openai": "^6.1.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^9.0.1",
     "ws": "^8.18.3"
   }

@@ -5,6 +5,8 @@ import { Inbox } from './inbox';
 import path from 'path';
 import { WebSocketServer as WSServer } from 'ws';
 import { WebSocketServer } from './websocket-server';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './openapi';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -45,6 +47,18 @@ app.use(limiter);
 // Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));
 
+// Serve OpenAPI documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'AI Effort Regulation API Docs'
+}));
+
+// Serve OpenAPI spec as JSON
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
+
 // Message queue for the sensitive loop
 export interface Message {
   id: string;
@@ -55,6 +69,45 @@ export interface Message {
 
 export const messageQueue: Message[] = [];
 
+/**
+ * @openapi
+ * /message:
+ *   post:
+ *     tags: [Messages]
+ *     summary: Send a message to the AI system
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Message'
+ *     responses:
+ *       200:
+ *         description: Message queued successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: queued
+ *                 id:
+ *                   type: string
+ *                   description: Message ID
+ *       400:
+ *         description: Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       429:
+ *         description: Rate limit exceeded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 app.post('/message', async function(req: express.Request, res: express.Response): Promise<void> {
   try {
     const { content, id, energyBudget, approvalResponse } = req.body;
@@ -528,6 +581,26 @@ app.delete('/apps/:appId/memories/:memoryId', (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /health:
+ *   get:
+ *     tags: [System]
+ *     summary: Health check endpoint for monitoring
+ *     responses:
+ *       200:
+ *         description: System is healthy or has warnings
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Health'
+ *       503:
+ *         description: System is unhealthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Health'
+ */
 app.get('/health', (req, res) => {
   // Comprehensive health check for monitoring and operations
   const globalLoop = global.sensitiveLoop;
