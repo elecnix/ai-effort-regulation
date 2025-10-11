@@ -1,9 +1,145 @@
-# Fixes Applied - Creative User Testing Issues
+# Fixes Applied - New User Experience Improvements
 
 ## Date
 October 11, 2025
 
-## Issues Found During Testing
+## Summary
+Fixed critical configuration inconsistencies and usability issues identified in NEW-USER-FEEDBACK.md that would prevent new users from successfully setting up and running the system.
+
+---
+
+## Critical Fixes Applied
+
+### 1. ✅ Port Number Consistency
+**Issue**: Port number was inconsistent across documentation and configuration files
+- README said port 6740
+- Architecture diagram said port 3002
+- .env.example said port 3002
+
+**Fix Applied**:
+- Updated `.env.example` to use port 6740 (matches code default)
+- Updated README architecture diagram to show port 6740
+- All documentation now consistently uses port 6740
+
+**Files Modified**:
+- `.env.example` line 2
+- `README.md` line 30
+
+---
+
+### 2. ✅ OLLAMA_BASE_URL Clarity
+**Issue**: Confusion about whether to use `/v1` suffix
+- README showed: `http://localhost:11434`
+- .env.example showed: `http://localhost:11434/v1`
+- Code adds `/v1` automatically
+
+**Fix Applied**:
+- Updated `.env.example` to use `http://localhost:11434` (without /v1)
+- Added clear comment explaining that /v1 is added automatically by the system
+- Removed confusing OLLAMA_API_KEY from .env.example (not needed for local Ollama)
+
+**Files Modified**:
+- `.env.example` lines 4-6
+
+---
+
+### 3. ✅ Clear Setup Instructions
+**Issue**: Missing explicit .env file creation step
+
+**Fix Applied**:
+- Added clear "Step 1: Create your environment file" section
+- Shows `cp .env.example .env` command explicitly
+- Explains what the defaults are
+- Makes it clear this is required
+
+**Files Modified**:
+- `README.md` lines 74-91
+
+---
+
+### 4. ✅ Model Installation Clarity
+**Issue**: Not clear that models are required, no size/time information
+
+**Fix Applied**:
+- Added warning emoji and "Downloads ~3GB, may take 5-10 minutes"
+- Showed exact sizes for each model
+- Added verification step with expected output
+- Made it clear these are REQUIRED for system to work
+
+**Files Modified**:
+- `README.md` lines 114-129
+
+---
+
+### 5. ✅ Setup Verification Script
+**Issue**: No way to verify setup before starting
+
+**Fix Applied**:
+- Created `verify-setup.sh` script that checks:
+  - Node.js version (18+)
+  - Ollama installation and running status
+  - Required models installed
+  - .env file exists
+  - Dependencies installed
+  - Project built
+- Provides color-coded output (errors in red, warnings in yellow, success in green)
+- Gives actionable error messages
+
+**Files Created**:
+- `verify-setup.sh` (executable)
+
+**Files Modified**:
+- `README.md` - Added Step 3: Verify your setup
+
+---
+
+### 6. ✅ Expected Output Documentation
+**Issue**: Users don't know what success looks like
+
+**Fix Applied**:
+- Added "✅ Success! You should see:" section
+- Shows exact console output users should expect
+- Lists all access URLs clearly
+- Distinguishes between Monitor UI, REST API, and WebSocket
+
+**Files Modified**:
+- `README.md` lines 162-172
+
+---
+
+### 7. ✅ Troubleshooting Section
+**Issue**: No troubleshooting guidance for common errors
+
+**Fix Applied**:
+- Added comprehensive troubleshooting section with:
+  - "Cannot find module" errors
+  - "ECONNREFUSED" (Ollama not running)
+  - "Model not found" errors
+  - Port already in use
+  - System starts but no responses
+  - Missing environment variables
+  - Build errors
+- Each issue has clear cause and solution
+
+**Files Modified**:
+- `README.md` lines 594-657
+
+---
+
+### 8. ✅ Prerequisites Check Section
+**Issue**: No way to verify prerequisites before installation
+
+**Fix Applied**:
+- Added "Prerequisites Check" section before installation
+- Shows quick commands to verify Node.js, Ollama, and Ollama status
+- Helps users catch issues early
+
+**Files Modified**:
+- `README.md` lines 58-67
+
+---
+
+## Previous Fixes (From Earlier Session)
 
 ### 1. ❌ Approval Endpoints Returning 404
 **Issue**: The approval endpoints were defined in the code but returning 404 errors when accessed.
