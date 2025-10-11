@@ -51,8 +51,9 @@ Sensitive Loop (Central Decision Engine)
 
 ### Prerequisites
 - **Node.js** 18+
-- **Ollama** running locally
-- **Llama models**: `ollama pull llama3.2:1b` and `ollama pull llama3.2:3b`
+- **LLM Provider** (choose one):
+  - **Ollama** (recommended for local/free testing) - Install from [ollama.ai](https://ollama.ai)
+  - **OpenRouter** (for production/cloud models) - Get API key from [openrouter.ai](https://openrouter.ai)
 
 ### Installation
 ```bash
@@ -62,80 +63,104 @@ npm install
 npm run build
 ```
 
-### Running
+### Configuration
+
+Create a `.env` file in the project root:
+
+```bash
+# Required: Ollama configuration (lowest cost option for testing)
+OLLAMA_BASE_URL=http://localhost:11434
+
+# Optional: OpenRouter configuration (for cloud models)
+# OPENROUTER_API_KEY=your_api_key_here
+
+# Optional: Server configuration
+PORT=6740
+MAX_MESSAGE_LENGTH=10000
+```
+
+### Running with Ollama (Recommended for Testing)
+
+**Ollama is the lowest-cost way to test the system** - it runs models locally for free!
+
+1. Install Ollama: https://ollama.ai
+2. Pull the required models:
+```bash
+ollama pull llama3.2:1b   # Fast model for low-energy operations
+ollama pull llama3.2:3b   # Better model for high-energy operations
+```
+
+3. Start the system:
 ```bash
 npm start
 ```
 
-The system will start on `http://localhost:6740` (default port)
+The system will start on `http://localhost:6740`:
+- **Monitor UI**: http://localhost:6740/ (Web dashboard)
+- **REST API**: http://localhost:6740/message, /stats, /conversations, /health
+- **WebSocket**: ws://localhost:6740/ws
 
-**Note**: On first run, the system creates a `conversations.db` file. If upgrading from v1.0, delete the old database:
+### Running with OpenRouter (Cloud Models)
+
+**OpenRouter can be used for production deployments** with access to many cloud models:
+
+1. Get an API key from [openrouter.ai](https://openrouter.ai)
+2. Add to `.env`: `OPENROUTER_API_KEY=your_key_here`
+3. Start with OpenRouter:
+
 ```bash
-rm conversations.db
-npm start
+npm start -- --provider openrouter --model anthropic/claude-3.5-sonnet
 ```
 
-### Command-Line Options
+Popular OpenRouter models:
+- `x-ai/grok-4-fast` - Fast and capable (recommended)
+- `anthropic/claude-3.5-sonnet` - High quality, expensive
+- `meta-llama/llama-3.1-8b-instruct` - Good balance
+- `google/gemini-flash-1.5` - Fast and cheap
 
-```bash
-npm start -- [options]
+### Debug Mode
 
-Options:
-  --port <number>          Server port (default: 6740)
-  --provider <name>        AI provider: ollama or openrouter (default: ollama)
-  --model <name>           Model name (provider-specific)
-  --replenish-rate <num>   Energy replenish rate per second (default: 1)
-  --duration <seconds>     Auto-stop after duration (for testing)
-  --debug                  Enable debug mode (show LLM prompts)
-```
-
-### Examples
-
-**Custom Port:**
-```bash
-npm start -- --port 3002
-```
-
-**OpenRouter Provider:**
-```bash
-npm start -- --provider openrouter --model x-ai/grok-4-fast
-```
-
-**Debug Mode:**
+You can run the system in debug mode to see the messages sent to the LLM:
 ```bash
 npm run debug
-npm run debug -- --duration=60
 ```
 
-**Fast Energy Replenishment (Testing):**
+It can also be useful to limit the run time to a few seconds:
 ```bash
-npm start -- --replenish-rate 10 --duration 300
+npm run debug -- --duration=60
 ```
 
 ## 🧪 Testing
 
 ### Manual Testing
 
-#### Send Messages
+#### Monitor UI (Recommended)
 ```bash
-curl -X POST http://localhost:3002/message \
+# Open in your browser
+http://localhost:6740/
+
+# Features:
+# - Real-time energy monitoring
+# - Live conversation view
+# - Event stream
+# - Interactive chat interface
+```
+
+#### REST API
+```bash
+# Send Messages
+curl -X POST http://localhost:6740/message \
   -H "Content-Type: application/json" \
   -d '{"content": "What is quantum computing?"}'
-```
 
-#### Check System Stats
-```bash
-curl http://localhost:3002/stats
-```
+# Check System Stats
+curl http://localhost:6740/stats
 
-#### Retrieve Conversations
-```bash
-curl http://localhost:3002/conversations/{requestId}
-```
+# Retrieve Conversations
+curl http://localhost:6740/conversations/{requestId}
 
-#### Health Check
-```bash
-curl http://localhost:3002/health
+# Health Check
+curl http://localhost:6740/health
 ```
 
 #### Demo Script
@@ -296,26 +321,6 @@ Get system-wide conversation statistics.
 }
 ```
 
-### GET /conversations
-List recent conversations with optional filtering.
-
-**Query Parameters:**
-- `limit` (optional): Number of conversations to return (default: 10)
-- `state` (optional): Filter by state (`active`, `ended`)
-- `budgetStatus` (optional): Filter by budget status (`within`, `exceeded`, `depleted`)
-
-**Response:**
-```json
-{
-  "conversations": [...],
-  "total": 5,
-  "filters": {
-    "state": "active",
-    "budgetStatus": "exceeded"
-  }
-}
-```
-
 ### GET /conversations/:requestId
 Retrieve a specific conversation.
 
@@ -335,23 +340,8 @@ Retrieve a specific conversation.
   "metadata": {
     "totalEnergyConsumed": 0,
     "sleepCycles": 0,
-    "modelSwitches": 0,
-    "budgetStatus": "within",
-    "energyBudget": 50
+    "modelSwitches": 0
   }
-}
-```
-
-### GET /energy
-Get current energy level (lightweight endpoint).
-
-**Response:**
-```json
-{
-  "current": 85.5,
-  "percentage": 85,
-  "status": "high",
-  "timestamp": "2025-10-11T06:52:31.895Z"
 }
 ```
 
@@ -362,13 +352,7 @@ Check system health.
 ```json
 {
   "status": "ok",
-  "timestamp": "2025-10-04T13:00:00.000Z",
-  "uptime": 3600,
-  "energy": {
-    "current": 85,
-    "percentage": 85,
-    "status": "high"
-  }
+  "timestamp": "2025-10-04T13:00:00.000Z"
 }
 ```
 
@@ -497,33 +481,12 @@ Delete a specific memory.
 }
 ```
 
-### POST /admin/trigger-reflection
-Manually trigger a reflection cycle (for testing/debugging).
-
-**Response:**
-```json
-{
-  "status": "triggered",
-  "message": "Reflection cycle initiated"
-}
-```
-
-### POST /admin/process-conversation/:requestId
-Force processing of a specific conversation (for testing/debugging).
-
-**Response:**
-```json
-{
-  "status": "processed",
-  "requestId": "abc-123"
-}
-```
-
 ## 🎨 Key Features
 
 ### Core Capabilities
 - **Energy-Aware Processing**: Responses adapt to available energy
 - **User-Guided Energy Budgets**: Specify effort allocation per conversation
+- **Monitor UI**: Real-time web dashboard for system observation and interaction
 - **Continuous Reflection**: System thinks about past conversations
 - **Model Switching**: Automatic optimization based on complexity needs
 - **Persistent Memory**: SQLite-backed conversation history
@@ -554,6 +517,7 @@ Force processing of a specific conversation (for testing/debugging).
 
 ### User Documentation
 - **[User Guide](./USER-GUIDE.md)**: Comprehensive user guide with examples
+- **[Monitor UI Guide](./MONITOR-UI-GUIDE.md)**: Web dashboard user guide
 - **[Quick Reference](./QUICK-REFERENCE.md)**: Fast reference for common tasks
 - **[Features Overview](./FEATURES.md)**: Complete feature list and status
 - **[Energy Budget Quick Start](./ENERGY-BUDGET-QUICKSTART.md)**: Guide to energy budgets
@@ -567,6 +531,7 @@ Force processing of a specific conversation (for testing/debugging).
 - **[Apps Vision](./6-apps-vision.md)**: Multi-app architecture vision
 - **[Apps Specification](./7-apps-specification.md)**: Apps feature technical spec
 - **[HTTP MCP Spec](./HTTP-MCP-SPEC.md)**: HTTP transport specification
+- **[Monitor UI Spec](./MONITOR-UI-SPEC.md)**: Monitor UI technical specification
 
 ### Implementation Guides
 - **[Apps Implementation Plan](./8-apps-implementation-plan.md)**: Phased implementation plan
@@ -576,6 +541,7 @@ Force processing of a specific conversation (for testing/debugging).
 - **[Tool Namespacing](./TOOL-NAMESPACING.md)**: Tool naming and collision prevention
 - **[HTTP MCP Implementation](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md)**: HTTP transport guide
 - **[MCP Integration Complete](./MCP-INTEGRATION-COMPLETE.md)**: MCP integration summary
+- **[Monitor UI Implementation](./MONITOR-UI-IMPLEMENTATION-PLAN.md)**: Monitor UI implementation details
 
 ## 🤝 Contributing
 

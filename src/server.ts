@@ -2,7 +2,11 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import rateLimit from 'express-rate-limit';
 import { Inbox } from './inbox';
-// Load environment variables
+import path from 'path';
+import { WebSocketServer as WSServer } from 'ws';
+import { WebSocketServer } from './websocket-server';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './openapi';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -22,63 +26,37 @@ const app = express();
 const DEFAULT_PORT = parseInt(process.env.PORT || '6740');
 const MAX_MESSAGE_LENGTH = parseInt(process.env.MAX_MESSAGE_LENGTH || '10000');
 
-// Security: Rate limiting
+// Security: Rate limiting - Very high limit for development/testing
 const limiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  limit: 60,
-  message: { error: 'Too many requests from this IP, please try again later.' },
-  standardHeaders: true,
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  limit: 10000, // Very high limit for testing
+  standardHeaders: 'draft-7', // Return rate limit headers
   legacyHeaders: false,
   handler: (req, res) => {
     res.status(429).json({
       error: 'Too many requests',
       message: 'Rate limit exceeded. Please try again later.',
-      retryAfter: 60
+      retryAfter: res.getHeader('Retry-After')
     });
-  },
+  }
 });
 
 // Apply rate limiting to all requests
 app.use(limiter);
 
-// CORS support for web clients
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-    return;
-  }
-  next();
-});
-
 // Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));
 
-// Root endpoint - API information
-app.get('/', (req, res) => {
-  res.json({
-    name: 'AI Effort Regulation API',
-    version: '1.0.0',
-    endpoints: {
-      message: 'POST /message - Submit a new message',
-      conversations: 'GET /conversations - List conversations',
-      conversationDetail: 'GET /conversations/:requestId - Get conversation details',
-      stats: 'GET /stats - Get conversation statistics',
-      apps: 'GET /apps - List installed apps',
-      appDetail: 'GET /apps/:appId - Get app details',
-      appEnergy: 'GET /apps/:appId/energy - Get app energy metrics',
-      installApp: 'POST /apps/install - Install a new app',
-      uninstallApp: 'DELETE /apps/:appId - Uninstall an app',
-      energy: 'GET /energy - Get current energy level',
-      health: 'GET /health - Health check',
-      ready: 'GET /ready - Readiness probe',
-      live: 'GET /live - Liveness probe'
-    },
-    documentation: 'See README.md for full API documentation'
-  });
+// Serve OpenAPI documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'AI Effort Regulation API Docs'
+}));
+
+// Serve OpenAPI spec as JSON
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
 });
 
 // Message queue for the sensitive loop
@@ -91,9 +69,54 @@ export interface Message {
 
 export const messageQueue: Message[] = [];
 
+/**
+ * @openapi
+ * /message:
+ *   post:
+ *     tags: [Messages]
+ *     summary: Send a message to the AI system
+ *     description: Queue a message for processing by the cognitive loop
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [content]
+ *             properties:
+ *               content:
+ *                 type: string
+ *                 maxLength: 10000
+ *                 description: The message content
+ *                 example: "What is the capital of France?"
+ *               id:
+ *                 type: string
+ *                 description: Optional message ID (auto-generated if not provided)
+ *               energyBudget:
+ *                 type: number
+ *                 nullable: true
+ *                 description: Optional energy budget for this message
+ *     responses:
+ *       200:
+ *         description: Message queued successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: queued
+ *                 id:
+ *                   type: string
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       429:
+ *         $ref: '#/components/responses/RateLimitExceeded'
+ */
 app.post('/message', async function(req: express.Request, res: express.Response): Promise<void> {
   try {
-    const { content, id, energyBudget } = req.body;
+    const { content, id, energyBudget, approvalResponse } = req.body;
 
     // Input validation
     if (!content || typeof content !== 'string') {
@@ -140,6 +163,37 @@ app.post('/message', async function(req: express.Request, res: express.Response)
       return;
     }
 
+    // Handle approval response if present
+    const globalLoop = global.sensitiveLoop;
+    if (approvalResponse && globalLoop && globalLoop.inbox) {
+      const { approved, newBudget, budgetChange, feedback } = approvalResponse;
+      
+      // Update approval status
+      if (approved !== undefined) {
+        const status = approved ? 'approved' : 'rejected';
+        globalLoop.inbox.updateApprovalStatus(messageId, null, status, feedback);
+        console.log(`${approved ? '✅' : '❌'} Approval ${status} for ${messageId}${feedback ? `: ${feedback}` : ''}`);
+      }
+      
+      // Apply budget changes
+      if (newBudget !== undefined && newBudget !== null) {
+        if (typeof newBudget === 'number' && newBudget >= 0) {
+          globalLoop.inbox.setEnergyBudget(messageId, newBudget);
+          console.log(`💰 Budget set to ${newBudget} for ${messageId}`);
+        }
+      } else if (budgetChange !== undefined && budgetChange !== null) {
+        if (typeof budgetChange === 'number') {
+          const conversation = globalLoop.inbox.getConversation(messageId);
+          if (conversation) {
+            const currentBudget = conversation.metadata.energyBudget || 0;
+            const updatedBudget = Math.max(0, currentBudget + budgetChange);
+            globalLoop.inbox.setEnergyBudget(messageId, updatedBudget);
+            console.log(`💰 Budget adjusted by ${budgetChange} (${currentBudget} → ${updatedBudget}) for ${messageId}`);
+          }
+        }
+      }
+    }
+
     const message: Message = {
       id: messageId,
       content: sanitizedContent,
@@ -148,7 +202,6 @@ app.post('/message', async function(req: express.Request, res: express.Response)
     };
 
     // Route through chat app
-    const globalLoop = global.sensitiveLoop;
     if (globalLoop) {
       const chatApp = globalLoop.getChatApp();
       await chatApp.handleUserMessage(messageId, sanitizedContent, message.energyBudget);
@@ -175,91 +228,28 @@ app.post('/message', async function(req: express.Request, res: express.Response)
   }
 });
 
-// Validation helpers
-function validateLimit(limit: any): number {
-  const parsed = parseInt(limit);
-  if (isNaN(parsed) || parsed < 0) {
-    return 10; // default
-  }
-  return Math.min(parsed, 100); // max 100
-}
-
-function validateState(state: any): string | undefined {
-  if (!state) return undefined;
-  const validStates = ['active', 'ended', 'snoozed'];
-  if (validStates.includes(state)) {
-    return state;
-  }
-  throw new Error(`Invalid state. Must be one of: ${validStates.join(', ')}`);
-}
-
-function validateBudgetStatus(status: any): string | undefined {
-  if (!status) return undefined;
-  const validStatuses = ['within', 'exceeded', 'depleted'];
-  if (validStatuses.includes(status)) {
-    return status;
-  }
-  throw new Error(`Invalid budgetStatus. Must be one of: ${validStatuses.join(', ')}`);
-}
-
 // New endpoints for conversation data
 app.get('/conversations', function(req: express.Request, res: express.Response): void {
   try {
-    // Validate query parameters
-    const limit = validateLimit(req.query.limit);
-    let state: string | undefined;
-    let budgetStatus: string | undefined;
-    
-    try {
-      state = validateState(req.query.state);
-      budgetStatus = validateBudgetStatus(req.query.budgetStatus);
-    } catch (error) {
-      res.status(400).json({ 
-        error: error instanceof Error ? error.message : 'Invalid parameter'
-      });
-      return;
-    }
-    
+    const limit = parseInt(req.query.limit as string) || 10; // Default to 10 recent conversations
     const globalLoop = global.sensitiveLoop;
     const conversations = globalLoop && globalLoop.inbox ? globalLoop.inbox.getRecentCompletedConversations(limit) : [];
 
-    let filteredConversations = conversations;
-
-    // Filter by state if provided
-    if (state) {
-      filteredConversations = filteredConversations.filter(conv => {
-        if (state === 'active') return !conv.ended;
-        if (state === 'ended') return conv.ended === true;
-        if (state === 'snoozed') return false; // TODO: implement snooze detection
-        return true;
-      });
-    }
-
-    // Filter by budget status if provided
-    if (budgetStatus) {
-      filteredConversations = filteredConversations.filter(conv => 
-        conv.metadata.budgetStatus === budgetStatus
-      );
-    }
-
     // Format conversations with energy consumption info
-    const formattedConversations = filteredConversations.map(conv => ({
+    const formattedConversations = conversations.map(conv => ({
       id: conv.requestId,
       requestMessage: conv.inputMessage,
       responseMessages: conv.responses.map(r => r.content),
-      timestamp: new Date(),
+      timestamp: new Date(), // Use current time for ordering
       energyConsumed: conv.metadata.totalEnergyConsumed,
       responseCount: conv.responses.length,
       ended: conv.ended,
-      endedReason: conv.endedReason,
-      budgetStatus: conv.metadata.budgetStatus,
-      energyBudget: conv.metadata.energyBudget
+      endedReason: conv.endedReason
     }));
 
     res.json({
       conversations: formattedConversations,
-      total: formattedConversations.length,
-      filters: { state, budgetStatus }
+      total: formattedConversations.length
     });
   } catch (error) {
     console.error('Error retrieving recent conversations:', error);
@@ -304,6 +294,121 @@ app.get('/conversations/:requestId', function(req: express.Request, res: express
     res.json(conversation);
   } catch (error) {
     console.error('Error retrieving conversation:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Get all approvals for a conversation
+app.get('/conversations/:requestId/approvals', function(req: express.Request, res: express.Response): void {
+  try {
+    const { requestId } = req.params;
+    if (!requestId) {
+      res.status(400).json({ error: 'requestId parameter is required' });
+      return;
+    }
+    
+    const globalLoop = global.sensitiveLoop;
+    if (!globalLoop || !globalLoop.inbox) {
+      res.status(500).json({ error: 'System not initialized' });
+      return;
+    }
+    
+    const approvals = globalLoop.inbox.getAllApprovals(requestId);
+    
+    res.json({
+      requestId,
+      approvals
+    });
+  } catch (error) {
+    console.error('Error retrieving approvals:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Approve a pending approval request
+app.post('/conversations/:requestId/approve', function(req: express.Request, res: express.Response): void {
+  try {
+    const { requestId } = req.params;
+    const { responseId, feedback, newBudget, budgetChange } = req.body;
+    
+    if (!requestId) {
+      res.status(400).json({ error: 'requestId parameter is required' });
+      return;
+    }
+    
+    const globalLoop = global.sensitiveLoop;
+    if (!globalLoop || !globalLoop.inbox) {
+      res.status(500).json({ error: 'System not initialized' });
+      return;
+    }
+    
+    // Update approval status
+    globalLoop.inbox.updateApprovalStatus(requestId, responseId || null, 'approved', feedback);
+    
+    // Apply budget changes if specified
+    let budgetUpdated = false;
+    let finalBudget: number | null = null;
+    
+    if (newBudget !== undefined && newBudget !== null) {
+      if (typeof newBudget === 'number' && newBudget >= 0) {
+        globalLoop.inbox.setEnergyBudget(requestId, newBudget);
+        budgetUpdated = true;
+        finalBudget = newBudget;
+      }
+    } else if (budgetChange !== undefined && budgetChange !== null) {
+      if (typeof budgetChange === 'number') {
+        const conversation = globalLoop.inbox.getConversation(requestId);
+        if (conversation) {
+          const currentBudget = conversation.metadata.energyBudget || 0;
+          const updatedBudget = Math.max(0, currentBudget + budgetChange);
+          globalLoop.inbox.setEnergyBudget(requestId, updatedBudget);
+          budgetUpdated = true;
+          finalBudget = updatedBudget;
+        }
+      }
+    }
+    
+    res.json({
+      status: 'approved',
+      responseId: responseId || 'latest',
+      budgetUpdated,
+      newBudget: finalBudget
+    });
+  } catch (error) {
+    console.error('Error approving request:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Reject a pending approval request
+app.post('/conversations/:requestId/reject', function(req: express.Request, res: express.Response): void {
+  try {
+    const { requestId } = req.params;
+    const { responseId, feedback } = req.body;
+    
+    if (!requestId) {
+      res.status(400).json({ error: 'requestId parameter is required' });
+      return;
+    }
+    
+    const globalLoop = global.sensitiveLoop;
+    if (!globalLoop || !globalLoop.inbox) {
+      res.status(500).json({ error: 'System not initialized' });
+      return;
+    }
+    
+    // Update approval status
+    globalLoop.inbox.updateApprovalStatus(requestId, responseId || null, 'rejected', feedback);
+    
+    res.json({
+      status: 'rejected',
+      responseId: responseId || 'latest'
+    });
+  } catch (error) {
+    console.error('Error rejecting request:', error);
     res.status(500).json({ error: 'Internal server error' });
     return;
   }
@@ -407,29 +512,6 @@ app.delete('/apps/:appId', async (req, res) => {
   }
 });
 
-app.get('/energy', (req, res) => {
-  try {
-    const globalLoop = global.sensitiveLoop;
-    if (!globalLoop || !globalLoop.energyRegulator) {
-      res.status(500).json({ error: 'Energy regulator not available' });
-      return;
-    }
-
-    const currentEnergy = globalLoop.energyRegulator.getEnergy();
-    const energyStatus = globalLoop.energyRegulator.getStatus();
-
-    res.json({
-      current: currentEnergy,
-      percentage: Math.round(Math.min(100, Math.max(0, currentEnergy))),
-      status: energyStatus,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Error retrieving energy:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 // Memory management endpoints
 app.get('/apps/:appId/memories', (req, res) => {
   try {
@@ -447,7 +529,7 @@ app.get('/apps/:appId/memories', (req, res) => {
     res.json({
       appId,
       count: memories.length,
-      memories: memories.map((m: any) => ({
+      memories: memories.map(m => ({
         id: m.id,
         content: m.content,
         createdAt: m.createdAt,
@@ -505,121 +587,172 @@ app.delete('/apps/:appId/memories/:memoryId', (req, res) => {
   }
 });
 
-// Admin endpoints for manual triggers
-app.post('/admin/trigger-reflection', async (req, res) => {
-  try {
-    const globalLoop = global.sensitiveLoop;
-    if (!globalLoop) {
-      res.status(500).json({ error: 'System not available' });
-      return;
-    }
-
-    // Trigger reflection by calling the internal method if available
-    if (typeof globalLoop.triggerReflection === 'function') {
-      await globalLoop.triggerReflection();
-      res.json({ status: 'triggered', message: 'Reflection cycle initiated' });
-    } else {
-      res.status(501).json({ error: 'Reflection trigger not implemented' });
-    }
-  } catch (error) {
-    console.error('Error triggering reflection:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.post('/admin/process-conversation/:requestId', async (req, res) => {
-  try {
-    const { requestId } = req.params;
-    const globalLoop = global.sensitiveLoop;
-    
-    if (!globalLoop) {
-      res.status(500).json({ error: 'System not available' });
-      return;
-    }
-
-    // Force processing of a specific conversation
-    if (typeof globalLoop.processConversation === 'function') {
-      await globalLoop.processConversation(requestId);
-      res.json({ status: 'processed', requestId });
-    } else {
-      res.status(501).json({ error: 'Manual processing not implemented' });
-    }
-  } catch (error) {
-    console.error('Error processing conversation:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
+/**
+ * @openapi
+ * /health:
+ *   get:
+ *     tags: [System]
+ *     summary: Health check endpoint for monitoring
+ *     description: Comprehensive health check with database connectivity, memory usage, and energy status
+ *     responses:
+ *       200:
+ *         description: System is healthy or has warnings
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   enum: [ok, warning, degraded, unhealthy]
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 uptime:
+ *                   type: integer
+ *                   description: System uptime in seconds
+ *                 version:
+ *                   type: string
+ *                 environment:
+ *                   type: string
+ *                 system:
+ *                   type: object
+ *                   properties:
+ *                     platform:
+ *                       type: string
+ *                     nodeVersion:
+ *                       type: string
+ *                     pid:
+ *                       type: integer
+ *                 memory:
+ *                   type: object
+ *                   properties:
+ *                     heapUsed:
+ *                       type: integer
+ *                     heapTotal:
+ *                       type: integer
+ *                     percentUsed:
+ *                       type: integer
+ *                 energy:
+ *                   type: object
+ *                   properties:
+ *                     current:
+ *                       type: number
+ *                     percentage:
+ *                       type: integer
+ *                     status:
+ *                       type: string
+ *                 database:
+ *                   type: object
+ *                   properties:
+ *                     connected:
+ *                       type: boolean
+ *                     error:
+ *                       type: string
+ *                       nullable: true
+ *                 checks:
+ *                   type: object
+ *                   properties:
+ *                     queueOverload:
+ *                       type: boolean
+ *                     lowEnergy:
+ *                       type: boolean
+ *                     highMemory:
+ *                       type: boolean
+ *                     dbConnected:
+ *                       type: boolean
+ *       503:
+ *         description: System is unhealthy (database down)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: unhealthy
+ *                 database:
+ *                   type: object
+ *                   properties:
+ *                     connected:
+ *                       type: boolean
+ *                       example: false
+ *                     error:
+ *                       type: string
+ */
 app.get('/health', (req, res) => {
-  // Comprehensive health check
+  // Comprehensive health check for monitoring and operations
   const globalLoop = global.sensitiveLoop;
   const currentEnergy = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getEnergy() : 0;
   const energyStatus = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getStatus() : 'unknown';
-
-  // Check database connectivity
-  let dbHealthy = false;
+  
+  // Test database connectivity
+  let dbConnected = false;
+  let dbError = null;
   try {
     if (globalLoop && globalLoop.inbox) {
-      globalLoop.inbox.getDatabase().prepare('SELECT 1').get();
-      dbHealthy = true;
+      const db = globalLoop.inbox.getDatabase();
+      db.prepare('SELECT 1').get();
+      dbConnected = true;
     }
-  } catch (error) {
-    console.error('Database health check failed:', error);
+  } catch (error: any) {
+    dbError = error.message;
   }
 
+  const memUsage = process.memoryUsage();
   const health = {
     status: 'ok',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
+    uptime: Math.round(process.uptime()),
+    version: process.env.npm_package_version || 'unknown',
+    environment: process.env.NODE_ENV || 'development',
+    system: {
+      platform: process.platform,
+      nodeVersion: process.version,
+      pid: process.pid
+    },
     memory: {
-      used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
-      total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
-      external: Math.round(process.memoryUsage().external / 1024 / 1024)
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      external: Math.round(memUsage.external / 1024 / 1024),
+      rss: Math.round(memUsage.rss / 1024 / 1024),
+      percentUsed: Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100)
     },
     queue: {
-      pendingMessages: messageQueue.length
+      pendingMessages: messageQueue.length,
+      maxCapacity: 1000,
+      percentFull: Math.round((messageQueue.length / 1000) * 100)
     },
     energy: {
-      current: currentEnergy,
+      current: Math.round(currentEnergy * 10) / 10,
       percentage: Math.round(Math.min(100, Math.max(0, currentEnergy))),
       status: energyStatus
     },
-    components: {
-      database: dbHealthy ? 'healthy' : 'unhealthy',
-      energyRegulator: globalLoop && globalLoop.energyRegulator ? 'healthy' : 'unhealthy',
-      inbox: globalLoop && globalLoop.inbox ? 'healthy' : 'unhealthy'
+    database: {
+      connected: dbConnected,
+      error: dbError
+    },
+    checks: {
+      queueOverload: messageQueue.length > 100,
+      lowEnergy: currentEnergy < 20,
+      highMemory: (memUsage.heapUsed / memUsage.heapTotal) > 0.9,
+      dbConnected: dbConnected
     }
   };
 
   // Determine overall status
-  let httpStatus = 200;
-  if (!dbHealthy || !globalLoop) {
+  if (!dbConnected) {
     health.status = 'unhealthy';
-    httpStatus = 503;
-  } else if (messageQueue.length > 100) {
+    res.status(503).json(health);
+  } else if (messageQueue.length > 100 || currentEnergy < 10) {
     health.status = 'degraded';
+    res.status(200).json(health);
   } else if (currentEnergy < 20) {
-    health.status = 'low_energy';
-  }
-
-  res.status(httpStatus).json(health);
-});
-
-// Kubernetes-style readiness probe
-app.get('/ready', (req, res) => {
-  const globalLoop = global.sensitiveLoop;
-  const ready = globalLoop && globalLoop.inbox && globalLoop.energyRegulator;
-  
-  if (ready) {
-    res.status(200).json({ ready: true });
+    health.status = 'warning';
+    res.status(200).json(health);
   } else {
-    res.status(503).json({ ready: false });
+    res.status(200).json(health);
   }
-});
-
-// Kubernetes-style liveness probe
-app.get('/live', (req, res) => {
-  res.status(200).json({ alive: true });
 });
 
 async function findAvailablePort(startPort: number, maxAttempts: number = 10): Promise<number> {
@@ -645,11 +778,37 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
   throw new Error(`No available port found in range ${startPort}-${startPort + maxAttempts - 1}`);
 }
 
-export async function startServer(preferredPort?: number) {
-  const startPort = preferredPort || DEFAULT_PORT;
-  const port = await findAvailablePort(startPort);
-  app.listen(port, () => {
+export async function startServer() {
+  const port = await findAvailablePort(DEFAULT_PORT);
+  const server = app.listen(port, () => {
     console.log(`HTTP Server listening on port ${port}`);
   });
-  return port;
+
+  const wss = new WSServer({ server, path: '/ws' });
+  const wsServer = new WebSocketServer(wss);
+  
+  (global as any).httpServer = server;
+  (global as any).wsServer = wsServer;
+  console.log(`WebSocket Server listening on port ${port}/ws`);
+
+  app.use(express.static(path.join(__dirname, '../../ui/dist')));
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || 
+        req.path.startsWith('/conversations') || 
+        req.path.startsWith('/stats') || 
+        req.path.startsWith('/health') ||
+        req.path.startsWith('/message')) {
+      next();
+    } else {
+      const indexPath = path.join(__dirname, '../../ui/dist/index.html');
+      res.sendFile(indexPath, (err) => {
+        if (err) {
+          next();
+        }
+      });
+    }
+  });
+
+  return { port, server, wsServer };
 }
