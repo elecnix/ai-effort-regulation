@@ -123,7 +123,7 @@ export class Inbox {
       FROM conversations c
       LEFT JOIN responses r ON c.id = r.conversation_id
       WHERE c.input_message IS NOT NULL AND c.input_message != ''
-        AND (c.snooze_until IS NULL OR c.snooze_until < strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        AND (c.snooze_until IS NULL OR c.snooze_until < datetime('now'))
       GROUP BY c.id, c.request_id, c.input_message, c.created_at
       HAVING COUNT(r.id) = 0
       ORDER BY c.created_at ASC
@@ -134,7 +134,7 @@ export class Inbox {
         FROM conversations c
         LEFT JOIN responses r ON c.id = r.conversation_id
         WHERE c.input_message IS NOT NULL AND c.input_message != ''
-          AND (c.snooze_until IS NULL OR c.snooze_until < strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+          AND (c.snooze_until IS NULL OR c.snooze_until < datetime('now'))
         GROUP BY c.id
         HAVING COUNT(r.id) = 0
       )
@@ -253,17 +253,20 @@ export class Inbox {
 
   // Snooze a conversation for a specified number of minutes
   snoozeConversation(requestId: string, minutes: number): Date {
+    // Defensive: validate minutes parameter
+    const safeMinutes = isNaN(minutes) || minutes === null || minutes === undefined || minutes < 0 ? 5 : minutes;
+    
     const snoozeUntil = new Date();
-    snoozeUntil.setMinutes(snoozeUntil.getMinutes() + minutes);
+    snoozeUntil.setMinutes(snoozeUntil.getMinutes() + safeMinutes);
 
     const stmt = this.db.prepare(`
       UPDATE conversations
-      SET snooze_until = ?, snooze_duration = ?
+      SET snooze_until = datetime(?), snooze_duration = ?
       WHERE request_id = ?
     `);
-    const result = stmt.run(snoozeUntil.toISOString(), minutes, requestId);
+    const result = stmt.run(snoozeUntil.toISOString(), safeMinutes, requestId);
     if (result.changes > 0) {
-      console.log(`😴 Snoozed conversation ${requestId} for ${minutes} minutes (until ${snoozeUntil.toISOString()})`);
+      console.log(`😴 Snoozed conversation ${requestId} for ${safeMinutes} minutes (until ${snoozeUntil.toISOString()})`);
       return snoozeUntil;
     } else {
       throw new Error(`😴 Conversation ${requestId} not found`);
@@ -310,7 +313,7 @@ export class Inbox {
         SELECT c.request_id, c.input_message, c.created_at, c.snooze_until
         FROM conversations c
         LEFT JOIN responses r ON c.id = r.conversation_id
-        WHERE (c.snooze_until IS NULL OR c.snooze_until < strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        WHERE (c.snooze_until IS NULL OR c.snooze_until < datetime('now'))
         GROUP BY c.id, c.request_id, c.input_message, c.created_at, c.snooze_until
         ORDER BY c.created_at DESC
         LIMIT ?
@@ -357,7 +360,7 @@ export class Inbox {
         FROM conversations c
         INNER JOIN responses r ON c.id = r.conversation_id
         WHERE c.ended = FALSE
-          AND (c.snooze_until IS NULL OR c.snooze_until < strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+          AND (c.snooze_until IS NULL OR c.snooze_until < datetime('now'))
         GROUP BY c.id, c.request_id
         HAVING COUNT(r.id) > 0
         ORDER BY c.created_at DESC
