@@ -5,6 +5,7 @@ import { Inbox } from './inbox';
 import { ThoughtManager } from './thoughts';
 import { MCPSubAgent } from './mcp-subagent';
 import { MCPClientManager } from './mcp-client';
+import { AppRegistry, ChatApp } from './apps';
 
 interface ConversationEntry {
   role: 'user' | 'assistant' | 'system';
@@ -25,6 +26,8 @@ export class SensitiveLoop {
   private conversationThoughtManager: ThoughtManager; // For focused conversation thoughts (in-memory)
   private mcpSubAgent: MCPSubAgent;
   private mcpClient: MCPClientManager;
+  private appRegistry: AppRegistry;
+  private chatApp: ChatApp;
   private isRunning = false;
   private debugMode = false;
   private selectedConversationId: string | null = null;
@@ -38,6 +41,9 @@ export class SensitiveLoop {
     this.conversationThoughtManager = new ThoughtManager();
     this.mcpSubAgent = new MCPSubAgent(debugMode);
     this.mcpClient = new MCPClientManager();
+    this.appRegistry = new AppRegistry(this.inbox.getDatabase());
+    this.chatApp = new ChatApp(this.appRegistry, this.inbox);
+    this.appRegistry.registerApp(this.chatApp);
   }
 
   async start(durationSeconds?: number) {
@@ -86,6 +92,61 @@ export class SensitiveLoop {
     console.log('🔌 MCP Sub-Agent stopped');
     
     console.log('Sensitive loop stopped');
+  }
+
+  getAppRegistry(): AppRegistry {
+    return this.appRegistry;
+  }
+
+  getChatApp(): ChatApp {
+    return this.chatApp;
+  }
+
+  // Handle incoming messages from apps
+  async handleAppMessage(message: any): Promise<void> {
+    // Messages from apps are added to inbox by the app itself
+    // The loop will pick them up in the next cognitive action
+    if (this.debugMode) {
+      console.log(`📨 Received message from app ${message.from} for conversation ${message.conversationId}`);
+    }
+  }
+
+  // Route response back to the originating app
+  private async routeResponseToApp(conversationId: string, response: string, energyLevel: number, modelUsed: string): Promise<void> {
+    // Find which app owns this conversation
+    const conversations = this.appRegistry.getActiveConversations();
+    const conv = conversations.find(c => c.conversationId === conversationId);
+    
+    if (conv) {
+      const app = this.appRegistry.getApp(conv.appId);
+      if (app) {
+        await app.receiveMessage({
+          conversationId,
+          from: 'loop',
+          to: conv.appId,
+          content: {
+            response,
+            energyLevel,
+            modelUsed
+          },
+          timestamp: new Date()
+        });
+        return;
+      }
+    }
+    
+    // Fallback: if no app found, assume it's the chat app
+    await this.chatApp.receiveMessage({
+      conversationId,
+      from: 'loop',
+      to: 'chat',
+      content: {
+        response,
+        energyLevel,
+        modelUsed
+      },
+      timestamp: new Date()
+    });
   }
 
   private getMCPTools(): MCPToolDefinition[] {
@@ -430,7 +491,8 @@ Your energy affects your responses:
         energyLevel = 0;
       }
 
-      this.inbox.addResponse(requestId, userMessage, responseContent, energyLevel, modelUsed);
+      // Route response back to the originating app
+      await this.routeResponseToApp(requestId, responseContent, energyLevel, modelUsed);
 
       // Only remove from pending messages if this was an unanswered conversation
       // For completed conversations, we don't remove them from pending since they're already answered

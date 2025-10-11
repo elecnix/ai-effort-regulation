@@ -49,7 +49,53 @@ Users can specify energy budgets to guide AI effort per conversation:
 }
 ```
 
-### 3. Adaptive Model Switching
+### 3. Multi-App Architecture
+
+**Status**: ✅ Production Ready  
+**Added**: October 2025
+
+The system supports multiple isolated apps that can run simultaneously:
+
+- **App Registry**: Install, manage, and monitor apps
+- **Conversation Isolation**: Each app only sees its own conversations
+- **Per-App Energy Tracking**: Monitor energy consumption by app
+- **Message Routing**: Automatic routing to correct app
+- **Energy Budgets**: Set hourly/daily limits per app
+- **App Types**: In-process, HTTP, and MCP apps (future)
+
+**Current Apps**:
+- **Chat App**: HTTP-based conversations (default)
+
+**Future Apps**:
+- Gmail App (email management)
+- Calendar App (scheduling)
+- Slack App (team communication)
+- Custom apps (extensible)
+
+**Benefits**:
+- True multi-channel support
+- Isolated conversation contexts
+- Independent energy tracking
+- Extensible architecture
+- Secure app boundaries
+
+**API**:
+```bash
+# List apps
+GET /apps
+
+# Install app
+POST /apps/install
+
+# Start/stop app
+POST /apps/:appId/start
+POST /apps/:appId/stop
+
+# Uninstall app
+DELETE /apps/:appId
+```
+
+### 4. Adaptive Model Switching
 
 **Status**: ✅ Production Ready
 
@@ -64,7 +110,7 @@ Automatic switching between models based on energy and task complexity:
 - Ollama (local): llama3.2:1b, llama3.2:3b, gemma:2b, etc.
 - OpenRouter (cloud): grok-4-fast, claude-3, gpt-4, etc.
 
-### 4. Continuous Reflection System
+### 5. Continuous Reflection System
 
 **Status**: ✅ Production Ready
 
@@ -81,7 +127,7 @@ The AI periodically reflects on past conversations:
 - Demonstrates autonomous thinking
 - Enriches conversation history
 
-### 5. Conversation Management
+### 6. Conversation Management
 
 **Status**: ✅ Production Ready
 
@@ -101,7 +147,7 @@ Sophisticated conversation state management:
 
 ## MCP Integration Features
 
-### 6. Unified MCP Tool System
+### 7. Unified MCP Tool System
 
 **Status**: ✅ Production Ready  
 **Added**: October 2025
@@ -135,7 +181,7 @@ After (Simple):
 }
 ```
 
-### 7. HTTP MCP Transport
+### 8. HTTP MCP Transport
 
 **Status**: ✅ Production Ready  
 **Added**: October 2025
@@ -167,7 +213,7 @@ Connect to remote MCP servers via HTTP/HTTPS:
 - Remote API integrations
 - Distributed tool systems
 
-### 8. Tool Namespacing
+### 9. Tool Namespacing
 
 **Status**: ✅ Production Ready  
 **Added**: October 2025
@@ -191,7 +237,7 @@ Server B (id: "fs-remote"): fs-remote_read_file
 - Better LLM understanding
 - Scalable to many servers
 
-### 9. MCP Sub-Agent System
+### 10. MCP Sub-Agent System
 
 **Status**: ✅ Production Ready  
 **Added**: October 2025
@@ -210,7 +256,7 @@ Background agent for MCP server management:
 
 ## API Features
 
-### 10. RESTful HTTP API
+### 11. RESTful HTTP API
 
 **Status**: ✅ Production Ready
 
@@ -228,7 +274,7 @@ Complete HTTP API for system interaction:
 - Energy budget support
 - Comprehensive error handling
 
-### 11. Real-time Analytics
+### 12. Real-time Analytics
 
 **Status**: ✅ Production Ready
 
@@ -244,7 +290,7 @@ System-wide statistics and monitoring:
 
 **Access**: `GET /stats`
 
-### 12. Persistent Storage
+### 13. Persistent Storage
 
 **Status**: ✅ Production Ready
 
@@ -258,7 +304,7 @@ SQLite database for conversation persistence:
 
 ## Developer Features
 
-### 13. Comprehensive Testing Framework
+### 14. Comprehensive Testing Framework
 
 **Status**: ✅ Production Ready
 
@@ -287,7 +333,7 @@ Extensive test coverage:
 npm test                         # Unit tests
 ```
 
-### 14. Debug Mode
+### 15. Debug Mode
 
 **Status**: ✅ Production Ready
 
@@ -304,7 +350,7 @@ npm run debug
 npm run debug -- --duration=60
 ```
 
-### 15. Docker Support
+### 16. Docker Support
 
 **Status**: ✅ Production Ready
 
@@ -323,7 +369,7 @@ docker run -p 6740:6740 ai-effort-regulation
 docker-compose up
 ```
 
-### 16. Dynamic Port Allocation
+### 17. Dynamic Port Allocation
 
 **Status**: ✅ Production Ready
 
@@ -342,7 +388,7 @@ npm start -- --port 3005     # Use specific port
 
 ## Configuration Features
 
-### 17. Flexible Configuration
+### 18. Flexible Configuration
 
 **Status**: ✅ Production Ready
 
@@ -364,7 +410,7 @@ export GITHUB_MCP_TOKEN=your-token
 - `.env`: Environment variables
 - `package.json`: npm scripts
 
-### 18. Provider Flexibility
+### 19. Provider Flexibility
 
 **Status**: ✅ Production Ready
 
@@ -385,7 +431,7 @@ Extensible architecture for adding new providers.
 
 ## Security Features
 
-### 19. Secure Credential Management
+### 20. Secure Credential Management
 
 **Status**: ✅ Production Ready
 
@@ -397,7 +443,7 @@ Best practices for credential handling:
 - **Token Authentication**: Bearer tokens and API keys
 - **Sanitized Errors**: No credential leakage in error messages
 
-### 20. Input Validation
+### 21. Input Validation
 
 **Status**: ✅ Production Ready
 
@@ -410,7 +456,7 @@ Comprehensive request validation:
 
 ## Documentation Features
 
-### 21. Comprehensive Documentation
+### 22. Comprehensive Documentation
 
 **Status**: ✅ Production Ready
 
@@ -441,7 +487,7 @@ Complete documentation suite:
 
 ## Performance Features
 
-### 22. Optimized Performance
+### 23. Optimized Performance
 
 **Status**: ✅ Production Ready
 
@@ -459,7 +505,7 @@ Performance optimizations:
 - Energy tracking: <1ms overhead
 - Database queries: <10ms
 
-### 23. Scalability
+### 24. Scalability
 
 **Status**: ✅ Production Ready
 
@@ -472,7 +518,7 @@ Designed for scalability:
 
 ## Observability Features
 
-### 24. Logging and Monitoring
+### 25. Logging and Monitoring
 
 **Status**: ✅ Production Ready
 
@@ -490,7 +536,7 @@ Comprehensive logging:
 - Error: Failures and exceptions
 - Debug: Detailed debugging info
 
-### 25. Health Checks
+### 26. Health Checks
 
 **Status**: ✅ Production Ready
 
