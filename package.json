@@ -4,6 +4,7 @@
   "description": "AI effort regulation demo with Ollama",
   "main": "dist/index.js",
   "scripts": {
+    "postinstall": "cd ui && npm install",
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "tsc",
     "build:frontend": "cd ui && npm run build",
