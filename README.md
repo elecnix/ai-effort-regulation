@@ -67,59 +67,75 @@ npm run build
 npm start
 ```
 
-The system will start on `http://localhost:6740`:
-- **Monitor UI**: http://localhost:6740/ (Web dashboard)
-- **REST API**: http://localhost:6740/message, /stats, /conversations, /health
-- **WebSocket**: ws://localhost:6740/ws
+The system will start on `http://localhost:6740` (default port)
 
-### Running with OpenRouter
+**Note**: On first run, the system creates a `conversations.db` file. If upgrading from v1.0, delete the old database:
+```bash
+rm conversations.db
+npm start
+```
+
+### Command-Line Options
+
+```bash
+npm start -- [options]
+
+Options:
+  --port <number>          Server port (default: 6740)
+  --provider <name>        AI provider: ollama or openrouter (default: ollama)
+  --model <name>           Model name (provider-specific)
+  --replenish-rate <num>   Energy replenish rate per second (default: 1)
+  --duration <seconds>     Auto-stop after duration (for testing)
+  --debug                  Enable debug mode (show LLM prompts)
+```
+
+### Examples
+
+**Custom Port:**
+```bash
+npm start -- --port 3002
+```
+
+**OpenRouter Provider:**
 ```bash
 npm start -- --provider openrouter --model x-ai/grok-4-fast
 ```
 
-### Debug Mode
-
-You can run the system in debug mode to see the messages sent to the LLM:
+**Debug Mode:**
 ```bash
 npm run debug
+npm run debug -- --duration=60
 ```
 
-It can also be useful to limit the run time to a few seconds:
+**Fast Energy Replenishment (Testing):**
 ```bash
-npm run debug -- --duration=60
+npm start -- --replenish-rate 10 --duration 300
 ```
 
 ## 🧪 Testing
 
 ### Manual Testing
 
-#### Monitor UI (Recommended)
+#### Send Messages
 ```bash
-# Open in your browser
-http://localhost:6740/
-
-# Features:
-# - Real-time energy monitoring
-# - Live conversation view
-# - Event stream
-# - Interactive chat interface
-```
-
-#### REST API
-```bash
-# Send Messages
-curl -X POST http://localhost:6740/message \
+curl -X POST http://localhost:3002/message \
   -H "Content-Type: application/json" \
   -d '{"content": "What is quantum computing?"}'
+```
 
-# Check System Stats
-curl http://localhost:6740/stats
+#### Check System Stats
+```bash
+curl http://localhost:3002/stats
+```
 
-# Retrieve Conversations
-curl http://localhost:6740/conversations/{requestId}
+#### Retrieve Conversations
+```bash
+curl http://localhost:3002/conversations/{requestId}
+```
 
-# Health Check
-curl http://localhost:6740/health
+#### Health Check
+```bash
+curl http://localhost:3002/health
 ```
 
 #### Demo Script
@@ -280,6 +296,26 @@ Get system-wide conversation statistics.
 }
 ```
 
+### GET /conversations
+List recent conversations with optional filtering.
+
+**Query Parameters:**
+- `limit` (optional): Number of conversations to return (default: 10)
+- `state` (optional): Filter by state (`active`, `ended`)
+- `budgetStatus` (optional): Filter by budget status (`within`, `exceeded`, `depleted`)
+
+**Response:**
+```json
+{
+  "conversations": [...],
+  "total": 5,
+  "filters": {
+    "state": "active",
+    "budgetStatus": "exceeded"
+  }
+}
+```
+
 ### GET /conversations/:requestId
 Retrieve a specific conversation.
 
@@ -299,8 +335,23 @@ Retrieve a specific conversation.
   "metadata": {
     "totalEnergyConsumed": 0,
     "sleepCycles": 0,
-    "modelSwitches": 0
+    "modelSwitches": 0,
+    "budgetStatus": "within",
+    "energyBudget": 50
   }
+}
+```
+
+### GET /energy
+Get current energy level (lightweight endpoint).
+
+**Response:**
+```json
+{
+  "current": 85.5,
+  "percentage": 85,
+  "status": "high",
+  "timestamp": "2025-10-11T06:52:31.895Z"
 }
 ```
 
@@ -311,7 +362,13 @@ Check system health.
 ```json
 {
   "status": "ok",
-  "timestamp": "2025-10-04T13:00:00.000Z"
+  "timestamp": "2025-10-04T13:00:00.000Z",
+  "uptime": 3600,
+  "energy": {
+    "current": 85,
+    "percentage": 85,
+    "status": "high"
+  }
 }
 ```
 
@@ -397,12 +454,33 @@ Uninstall an app.
 }
 ```
 
+### POST /admin/trigger-reflection
+Manually trigger a reflection cycle (for testing/debugging).
+
+**Response:**
+```json
+{
+  "status": "triggered",
+  "message": "Reflection cycle initiated"
+}
+```
+
+### POST /admin/process-conversation/:requestId
+Force processing of a specific conversation (for testing/debugging).
+
+**Response:**
+```json
+{
+  "status": "processed",
+  "requestId": "abc-123"
+}
+```
+
 ## 🎨 Key Features
 
 ### Core Capabilities
 - **Energy-Aware Processing**: Responses adapt to available energy
 - **User-Guided Energy Budgets**: Specify effort allocation per conversation
-- **Monitor UI**: Real-time web dashboard for system observation and interaction
 - **Continuous Reflection**: System thinks about past conversations
 - **Model Switching**: Automatic optimization based on complexity needs
 - **Persistent Memory**: SQLite-backed conversation history
@@ -426,7 +504,6 @@ Uninstall an app.
 
 ### User Documentation
 - **[User Guide](./USER-GUIDE.md)**: Comprehensive user guide with examples
-- **[Monitor UI Guide](./MONITOR-UI-GUIDE.md)**: Web dashboard user guide
 - **[Quick Reference](./QUICK-REFERENCE.md)**: Fast reference for common tasks
 - **[Features Overview](./FEATURES.md)**: Complete feature list and status
 - **[Energy Budget Quick Start](./ENERGY-BUDGET-QUICKSTART.md)**: Guide to energy budgets
@@ -440,7 +517,6 @@ Uninstall an app.
 - **[Apps Vision](./6-apps-vision.md)**: Multi-app architecture vision
 - **[Apps Specification](./7-apps-specification.md)**: Apps feature technical spec
 - **[HTTP MCP Spec](./HTTP-MCP-SPEC.md)**: HTTP transport specification
-- **[Monitor UI Spec](./MONITOR-UI-SPEC.md)**: Monitor UI technical specification
 
 ### Implementation Guides
 - **[Apps Implementation Plan](./8-apps-implementation-plan.md)**: Phased implementation plan
@@ -450,7 +526,6 @@ Uninstall an app.
 - **[Tool Namespacing](./TOOL-NAMESPACING.md)**: Tool naming and collision prevention
 - **[HTTP MCP Implementation](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md)**: HTTP transport guide
 - **[MCP Integration Complete](./MCP-INTEGRATION-COMPLETE.md)**: MCP integration summary
-- **[Monitor UI Implementation](./MONITOR-UI-IMPLEMENTATION-PLAN.md)**: Monitor UI implementation details
 
 ## 🤝 Contributing
 

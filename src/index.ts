@@ -1,13 +1,13 @@
 import { startServer } from './server';
 import { SensitiveLoop } from './loop';
 import { ProviderConfiguration } from './provider-config';
-import { EventBridge } from './event-bridge';
 
 // Parse command line arguments
 const args = process.argv.slice(2);
 let durationSeconds: number | undefined;
 let debugMode = false;
 let replenishRate: number = 1;
+let port: number | undefined;
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--duration') {
@@ -49,6 +49,18 @@ for (let i = 0; i < args.length; i++) {
       console.log(`🧠 AI Model set to: ${nextArg}`);
       i++; // Skip the next argument as it's the value
     }
+  } else if (args[i] === '--port') {
+    const nextArg = args[i + 1];
+    if (nextArg) {
+      const portNum = parseInt(nextArg);
+      if (!isNaN(portNum) && portNum > 0 && portNum < 65536) {
+        port = portNum;
+        console.log(`🌐 Port set to: ${port}`);
+      } else {
+        console.error('❌ Invalid port. Must be a number between 1 and 65535');
+      }
+      i++; // Skip the next argument as it's the value
+    }
   }
 }
 
@@ -70,16 +82,8 @@ async function main() {
     process.exit(1);
   }
 
-  // Start HTTP server and WebSocket server
-  const { port, server, wsServer } = await startServer();
-
-  // Initialize event bridge
-  const eventBridge = new EventBridge(wsServer, sensitiveLoop);
-  eventBridge.start();
-  console.log('🌉 Event bridge initialized');
-
-  // Make event bridge globally accessible
-  (global as any).eventBridge = eventBridge;
+  // Start HTTP server
+  await startServer(port);
 
   // Start the sensitive loop
   await sensitiveLoop.start(durationSeconds);

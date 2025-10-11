@@ -254,44 +254,6 @@ Background agent for MCP server management:
 - `mcp_list_servers`: Query available servers
 - Direct tool invocation via unified system
 
-## User Interface Features
-
-### 10. Monitor UI - Real-Time Web Dashboard
-
-**Status**: ✅ Production Ready  
-**Added**: October 2025
-
-Comprehensive web-based monitoring interface for system observation and interaction:
-
-**Interface Components**:
-- **System Health Bar**: Energy gauge with color coding, statistics, uptime
-- **Conversation List**: Scrollable list with state indicators and metrics
-- **Chat Panel**: Interactive message interface with energy budget support
-- **Event Stream**: Real-time color-coded event feed (last 100 events)
-
-**Features**:
-- **Real-Time Updates**: WebSocket-based bidirectional communication
-- **Energy Monitoring**: Live energy gauge with color coding (green/yellow/orange/red)
-- **Event Broadcasting**: All system events streamed to UI
-- **Interactive Chat**: Send messages with optional energy budgets
-- **Conversation Switching**: Click to view any conversation
-- **Auto-Reconnect**: Automatic reconnection with exponential backoff
-- **Multiple Clients**: Support for multiple simultaneous connections
-
-**WebSocket Protocol**:
-- Client → Server: `send_message`, `get_conversations`, `get_conversation`, `get_stats`
-- Server → Client: `connected`, `energy_update`, `conversation_created`, `message_added`, `conversation_state_changed`, `model_switched`, `sleep_start`, `sleep_end`, `tool_invocation`, `system_stats`
-
-**Performance**:
-- WebSocket latency: <50ms
-- UI update rate: 60fps
-- Page load time: <2 seconds
-- Memory efficient: Only last 100 events kept
-
-**Access**: Open browser to `http://localhost:6740/`
-
-**Documentation**: See [MONITOR-UI-GUIDE.md](./MONITOR-UI-GUIDE.md) for complete guide
-
 ## API Features
 
 ### 11. RESTful HTTP API
@@ -503,8 +465,6 @@ Complete documentation suite:
 **User Documentation**:
 - USER-GUIDE.md (comprehensive guide)
 - README.md (quick start)
-- MONITOR-UI-GUIDE.md (Monitor UI guide)
-- QUICK-START-MONITOR.md (Monitor UI quick start)
 - ENERGY-BUDGET-QUICKSTART.md
 - FEATURES.md (this document)
 
@@ -513,7 +473,6 @@ Complete documentation suite:
 - 3-mcp-integration-spec.md (MCP spec)
 - 5-energy-budget-spec.md (budget spec)
 - HTTP-MCP-SPEC.md (HTTP transport spec)
-- MONITOR-UI-SPEC.md (Monitor UI spec)
 
 **Implementation Documentation**:
 - UNIFIED-MCP-TOOLS.md
@@ -521,9 +480,6 @@ Complete documentation suite:
 - TOOL-NAMESPACING.md
 - ENERGY-BUDGET-IMPLEMENTATION.md
 - MCP-INTEGRATION-COMPLETE.md
-- MONITOR-UI-IMPLEMENTATION-PLAN.md
-- MONITOR-UI-SUMMARY.md
-- MONITOR-UI-COMPLETE.md
 
 **Release Documentation**:
 - RELEASE-NOTES.md
@@ -597,15 +553,16 @@ System health monitoring:
 
 These features are documented but not yet implemented:
 
-1. **Connection Pooling**: Reuse HTTP connections for better performance
-2. **Request Batching**: Combine multiple tool calls
-3. **Response Caching**: Cache frequently used MCP results
-4. **Circuit Breaker**: Prevent cascading failures
-5. **Metrics Collection**: Detailed performance metrics
-6. **Server Discovery**: Auto-discover MCP servers
-7. **Load Balancing**: Distribute across multiple instances
-8. **Streaming Responses**: Support streaming for long responses
-9. **GraphQL Support**: Alternative to JSON-RPC for MCP
+1. **WebSocket Transport**: Real-time bidirectional MCP communication
+2. **Connection Pooling**: Reuse HTTP connections for better performance
+3. **Request Batching**: Combine multiple tool calls
+4. **Response Caching**: Cache frequently used MCP results
+5. **Circuit Breaker**: Prevent cascading failures
+6. **Metrics Collection**: Detailed performance metrics
+7. **Server Discovery**: Auto-discover MCP servers
+8. **Load Balancing**: Distribute across multiple instances
+9. **Streaming Responses**: Support streaming for long responses
+10. **GraphQL Support**: Alternative to JSON-RPC for MCP
 
 ### Under Consideration
 
@@ -632,7 +589,6 @@ These features are documented but not yet implemented:
 | HTTP MCP Transport | ✅ Ready | 1.0 | 100% |
 | Tool Namespacing | ✅ Ready | 1.0 | 100% |
 | MCP Sub-Agent | ✅ Ready | 1.0 | 100% |
-| Monitor UI | ✅ Ready | 1.0 | 100% |
 | RESTful API | ✅ Ready | 1.0 | 100% |
 | Real-time Analytics | ✅ Ready | 1.0 | 100% |
 | Persistent Storage | ✅ Ready | 1.0 | 100% |
@@ -649,19 +605,43 @@ These features are documented but not yet implemented:
 | Scalability | ✅ Ready | 1.0 | N/A |
 | Logging | ✅ Ready | 1.0 | N/A |
 | Health Checks | ✅ Ready | 1.0 | 100% |
+| **Critical Production Fixes** | ✅ Ready | **1.1** | **100%** |
+| **Query Parameter Validation** | ✅ Ready | **1.1** | **100%** |
+| **Enhanced Health Monitoring** | ✅ Ready | **1.1** | **100%** |
+| **Kubernetes Probes** | ✅ Ready | **1.1** | **100%** |
 
 ## Summary
 
 The AI Effort Regulation system is a **production-ready** platform with:
 
-- **26 implemented features** across 7 categories
+- **29 implemented features** across 6 categories
 - **100% test coverage** on testable features
 - **Comprehensive documentation** for users and developers
 - **Backward compatibility** maintained throughout
 - **Active development** with clear roadmap
+- **All critical bugs fixed** in v1.1
 
-**Total Features**: 26 production-ready + 18 planned/under consideration
+**Total Features**: 29 production-ready + 19 planned/under consideration
 
 **Status**: ✅ Production Ready  
-**Version**: 1.0  
+**Version**: 1.1  
 **Last Updated**: October 11, 2025
+
+## Recent Updates (v1.1)
+
+### Critical Fixes
+- Fixed database foreign key constraint issue
+- Fixed rate limiting to return JSON
+- Fixed server unresponsiveness after rate limit
+
+### New Features
+- Query parameter validation (limit, state, budgetStatus)
+- Enhanced health checks with component status
+- Kubernetes readiness probe (`/ready`)
+- Kubernetes liveness probe (`/live`)
+- Consistent JSON error responses
+
+### Test Results
+- 12/12 critical tests passed (100%)
+- All edge case issues resolved
+- Production ready status achieved

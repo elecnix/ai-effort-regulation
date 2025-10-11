@@ -2,9 +2,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import rateLimit from 'express-rate-limit';
 import { Inbox } from './inbox';
-import path from 'path';
-import { WebSocketServer as WSServer } from 'ws';
-import { WebSocketServer } from './websocket-server';
+// Load environment variables
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -28,13 +26,33 @@ const MAX_MESSAGE_LENGTH = parseInt(process.env.MAX_MESSAGE_LENGTH || '10000');
 const limiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   limit: 60,
-  message: 'Too many requests from this IP, please try again later.',
+  message: { error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Rate limit exceeded. Please try again later.',
+      retryAfter: 60
+    });
+  },
 });
 
 // Apply rate limiting to all requests
 app.use(limiter);
+
+// CORS support for web clients
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+    return;
+  }
+  next();
+});
 
 // Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));
@@ -51,7 +69,7 @@ export const messageQueue: Message[] = [];
 
 app.post('/message', async function(req: express.Request, res: express.Response): Promise<void> {
   try {
-    const { content, id, energyBudget, approvalResponse } = req.body;
+    const { content, id, energyBudget } = req.body;
 
     // Input validation
     if (!content || typeof content !== 'string') {
@@ -98,37 +116,6 @@ app.post('/message', async function(req: express.Request, res: express.Response)
       return;
     }
 
-    // Handle approval response if present
-    const globalLoop = global.sensitiveLoop;
-    if (approvalResponse && globalLoop && globalLoop.inbox) {
-      const { approved, newBudget, budgetChange, feedback } = approvalResponse;
-      
-      // Update approval status
-      if (approved !== undefined) {
-        const status = approved ? 'approved' : 'rejected';
-        globalLoop.inbox.updateApprovalStatus(messageId, null, status, feedback);
-        console.log(`${approved ? '✅' : '❌'} Approval ${status} for ${messageId}${feedback ? `: ${feedback}` : ''}`);
-      }
-      
-      // Apply budget changes
-      if (newBudget !== undefined && newBudget !== null) {
-        if (typeof newBudget === 'number' && newBudget >= 0) {
-          globalLoop.inbox.setEnergyBudget(messageId, newBudget);
-          console.log(`💰 Budget set to ${newBudget} for ${messageId}`);
-        }
-      } else if (budgetChange !== undefined && budgetChange !== null) {
-        if (typeof budgetChange === 'number') {
-          const conversation = globalLoop.inbox.getConversation(messageId);
-          if (conversation) {
-            const currentBudget = conversation.metadata.energyBudget || 0;
-            const updatedBudget = Math.max(0, currentBudget + budgetChange);
-            globalLoop.inbox.setEnergyBudget(messageId, updatedBudget);
-            console.log(`💰 Budget adjusted by ${budgetChange} (${currentBudget} → ${updatedBudget}) for ${messageId}`);
-          }
-        }
-      }
-    }
-
     const message: Message = {
       id: messageId,
       content: sanitizedContent,
@@ -137,6 +124,7 @@ app.post('/message', async function(req: express.Request, res: express.Response)
     };
 
     // Route through chat app
+    const globalLoop = global.sensitiveLoop;
     if (globalLoop) {
       const chatApp = globalLoop.getChatApp();
       await chatApp.handleUserMessage(messageId, sanitizedContent, message.energyBudget);
@@ -163,28 +151,91 @@ app.post('/message', async function(req: express.Request, res: express.Response)
   }
 });
 
+// Validation helpers
+function validateLimit(limit: any): number {
+  const parsed = parseInt(limit);
+  if (isNaN(parsed) || parsed < 0) {
+    return 10; // default
+  }
+  return Math.min(parsed, 100); // max 100
+}
+
+function validateState(state: any): string | undefined {
+  if (!state) return undefined;
+  const validStates = ['active', 'ended', 'snoozed'];
+  if (validStates.includes(state)) {
+    return state;
+  }
+  throw new Error(`Invalid state. Must be one of: ${validStates.join(', ')}`);
+}
+
+function validateBudgetStatus(status: any): string | undefined {
+  if (!status) return undefined;
+  const validStatuses = ['within', 'exceeded', 'depleted'];
+  if (validStatuses.includes(status)) {
+    return status;
+  }
+  throw new Error(`Invalid budgetStatus. Must be one of: ${validStatuses.join(', ')}`);
+}
+
 // New endpoints for conversation data
 app.get('/conversations', function(req: express.Request, res: express.Response): void {
   try {
-    const limit = parseInt(req.query.limit as string) || 10; // Default to 10 recent conversations
+    // Validate query parameters
+    const limit = validateLimit(req.query.limit);
+    let state: string | undefined;
+    let budgetStatus: string | undefined;
+    
+    try {
+      state = validateState(req.query.state);
+      budgetStatus = validateBudgetStatus(req.query.budgetStatus);
+    } catch (error) {
+      res.status(400).json({ 
+        error: error instanceof Error ? error.message : 'Invalid parameter'
+      });
+      return;
+    }
+    
     const globalLoop = global.sensitiveLoop;
     const conversations = globalLoop && globalLoop.inbox ? globalLoop.inbox.getRecentCompletedConversations(limit) : [];
 
+    let filteredConversations = conversations;
+
+    // Filter by state if provided
+    if (state) {
+      filteredConversations = filteredConversations.filter(conv => {
+        if (state === 'active') return !conv.ended;
+        if (state === 'ended') return conv.ended === true;
+        if (state === 'snoozed') return false; // TODO: implement snooze detection
+        return true;
+      });
+    }
+
+    // Filter by budget status if provided
+    if (budgetStatus) {
+      filteredConversations = filteredConversations.filter(conv => 
+        conv.metadata.budgetStatus === budgetStatus
+      );
+    }
+
     // Format conversations with energy consumption info
-    const formattedConversations = conversations.map(conv => ({
+    const formattedConversations = filteredConversations.map(conv => ({
       id: conv.requestId,
       requestMessage: conv.inputMessage,
       responseMessages: conv.responses.map(r => r.content),
-      timestamp: new Date(), // Use current time for ordering
+      timestamp: new Date(),
       energyConsumed: conv.metadata.totalEnergyConsumed,
       responseCount: conv.responses.length,
       ended: conv.ended,
-      endedReason: conv.endedReason
+      endedReason: conv.endedReason,
+      budgetStatus: conv.metadata.budgetStatus,
+      energyBudget: conv.metadata.energyBudget
     }));
 
     res.json({
       conversations: formattedConversations,
-      total: formattedConversations.length
+      total: formattedConversations.length,
+      filters: { state, budgetStatus }
     });
   } catch (error) {
     console.error('Error retrieving recent conversations:', error);
@@ -229,121 +280,6 @@ app.get('/conversations/:requestId', function(req: express.Request, res: express
     res.json(conversation);
   } catch (error) {
     console.error('Error retrieving conversation:', error);
-    res.status(500).json({ error: 'Internal server error' });
-    return;
-  }
-});
-
-// Get all approvals for a conversation
-app.get('/conversations/:requestId/approvals', function(req: express.Request, res: express.Response): void {
-  try {
-    const { requestId } = req.params;
-    if (!requestId) {
-      res.status(400).json({ error: 'requestId parameter is required' });
-      return;
-    }
-    
-    const globalLoop = global.sensitiveLoop;
-    if (!globalLoop || !globalLoop.inbox) {
-      res.status(500).json({ error: 'System not initialized' });
-      return;
-    }
-    
-    const approvals = globalLoop.inbox.getAllApprovals(requestId);
-    
-    res.json({
-      requestId,
-      approvals
-    });
-  } catch (error) {
-    console.error('Error retrieving approvals:', error);
-    res.status(500).json({ error: 'Internal server error' });
-    return;
-  }
-});
-
-// Approve a pending approval request
-app.post('/conversations/:requestId/approve', function(req: express.Request, res: express.Response): void {
-  try {
-    const { requestId } = req.params;
-    const { responseId, feedback, newBudget, budgetChange } = req.body;
-    
-    if (!requestId) {
-      res.status(400).json({ error: 'requestId parameter is required' });
-      return;
-    }
-    
-    const globalLoop = global.sensitiveLoop;
-    if (!globalLoop || !globalLoop.inbox) {
-      res.status(500).json({ error: 'System not initialized' });
-      return;
-    }
-    
-    // Update approval status
-    globalLoop.inbox.updateApprovalStatus(requestId, responseId || null, 'approved', feedback);
-    
-    // Apply budget changes if specified
-    let budgetUpdated = false;
-    let finalBudget: number | null = null;
-    
-    if (newBudget !== undefined && newBudget !== null) {
-      if (typeof newBudget === 'number' && newBudget >= 0) {
-        globalLoop.inbox.setEnergyBudget(requestId, newBudget);
-        budgetUpdated = true;
-        finalBudget = newBudget;
-      }
-    } else if (budgetChange !== undefined && budgetChange !== null) {
-      if (typeof budgetChange === 'number') {
-        const conversation = globalLoop.inbox.getConversation(requestId);
-        if (conversation) {
-          const currentBudget = conversation.metadata.energyBudget || 0;
-          const updatedBudget = Math.max(0, currentBudget + budgetChange);
-          globalLoop.inbox.setEnergyBudget(requestId, updatedBudget);
-          budgetUpdated = true;
-          finalBudget = updatedBudget;
-        }
-      }
-    }
-    
-    res.json({
-      status: 'approved',
-      responseId: responseId || 'latest',
-      budgetUpdated,
-      newBudget: finalBudget
-    });
-  } catch (error) {
-    console.error('Error approving request:', error);
-    res.status(500).json({ error: 'Internal server error' });
-    return;
-  }
-});
-
-// Reject a pending approval request
-app.post('/conversations/:requestId/reject', function(req: express.Request, res: express.Response): void {
-  try {
-    const { requestId } = req.params;
-    const { responseId, feedback } = req.body;
-    
-    if (!requestId) {
-      res.status(400).json({ error: 'requestId parameter is required' });
-      return;
-    }
-    
-    const globalLoop = global.sensitiveLoop;
-    if (!globalLoop || !globalLoop.inbox) {
-      res.status(500).json({ error: 'System not initialized' });
-      return;
-    }
-    
-    // Update approval status
-    globalLoop.inbox.updateApprovalStatus(requestId, responseId || null, 'rejected', feedback);
-    
-    res.json({
-      status: 'rejected',
-      responseId: responseId || 'latest'
-    });
-  } catch (error) {
-    console.error('Error rejecting request:', error);
     res.status(500).json({ error: 'Internal server error' });
     return;
   }
@@ -447,11 +383,90 @@ app.delete('/apps/:appId', async (req, res) => {
   }
 });
 
+app.get('/energy', (req, res) => {
+  try {
+    const globalLoop = global.sensitiveLoop;
+    if (!globalLoop || !globalLoop.energyRegulator) {
+      res.status(500).json({ error: 'Energy regulator not available' });
+      return;
+    }
+
+    const currentEnergy = globalLoop.energyRegulator.getEnergy();
+    const energyStatus = globalLoop.energyRegulator.getStatus();
+
+    res.json({
+      current: currentEnergy,
+      percentage: Math.round(Math.min(100, Math.max(0, currentEnergy))),
+      status: energyStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error retrieving energy:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Admin endpoints for manual triggers
+app.post('/admin/trigger-reflection', async (req, res) => {
+  try {
+    const globalLoop = global.sensitiveLoop;
+    if (!globalLoop) {
+      res.status(500).json({ error: 'System not available' });
+      return;
+    }
+
+    // Trigger reflection by calling the internal method if available
+    if (typeof globalLoop.triggerReflection === 'function') {
+      await globalLoop.triggerReflection();
+      res.json({ status: 'triggered', message: 'Reflection cycle initiated' });
+    } else {
+      res.status(501).json({ error: 'Reflection trigger not implemented' });
+    }
+  } catch (error) {
+    console.error('Error triggering reflection:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/admin/process-conversation/:requestId', async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const globalLoop = global.sensitiveLoop;
+    
+    if (!globalLoop) {
+      res.status(500).json({ error: 'System not available' });
+      return;
+    }
+
+    // Force processing of a specific conversation
+    if (typeof globalLoop.processConversation === 'function') {
+      await globalLoop.processConversation(requestId);
+      res.json({ status: 'processed', requestId });
+    } else {
+      res.status(501).json({ error: 'Manual processing not implemented' });
+    }
+  } catch (error) {
+    console.error('Error processing conversation:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/health', (req, res) => {
   // Comprehensive health check
   const globalLoop = global.sensitiveLoop;
   const currentEnergy = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getEnergy() : 0;
   const energyStatus = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getStatus() : 'unknown';
+
+  // Check database connectivity
+  let dbHealthy = false;
+  try {
+    if (globalLoop && globalLoop.inbox) {
+      globalLoop.inbox.getDatabase().prepare('SELECT 1').get();
+      dbHealthy = true;
+    }
+  } catch (error) {
+    console.error('Database health check failed:', error);
+  }
 
   const health = {
     status: 'ok',
@@ -470,21 +485,42 @@ app.get('/health', (req, res) => {
       percentage: Math.round(Math.min(100, Math.max(0, currentEnergy))),
       status: energyStatus
     },
-    database: {
-      connected: true // Would need actual DB health check
+    components: {
+      database: dbHealthy ? 'healthy' : 'unhealthy',
+      energyRegulator: globalLoop && globalLoop.energyRegulator ? 'healthy' : 'unhealthy',
+      inbox: globalLoop && globalLoop.inbox ? 'healthy' : 'unhealthy'
     }
   };
 
-  // Check if system is overloaded
-  if (messageQueue.length > 100) {
-    health.status = 'warning';
-    res.status(200).json(health);
+  // Determine overall status
+  let httpStatus = 200;
+  if (!dbHealthy || !globalLoop) {
+    health.status = 'unhealthy';
+    httpStatus = 503;
+  } else if (messageQueue.length > 100) {
+    health.status = 'degraded';
   } else if (currentEnergy < 20) {
     health.status = 'low_energy';
-    res.status(200).json(health);
-  } else {
-    res.json(health);
   }
+
+  res.status(httpStatus).json(health);
+});
+
+// Kubernetes-style readiness probe
+app.get('/ready', (req, res) => {
+  const globalLoop = global.sensitiveLoop;
+  const ready = globalLoop && globalLoop.inbox && globalLoop.energyRegulator;
+  
+  if (ready) {
+    res.status(200).json({ ready: true });
+  } else {
+    res.status(503).json({ ready: false });
+  }
+});
+
+// Kubernetes-style liveness probe
+app.get('/live', (req, res) => {
+  res.status(200).json({ alive: true });
 });
 
 async function findAvailablePort(startPort: number, maxAttempts: number = 10): Promise<number> {
@@ -510,36 +546,11 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
   throw new Error(`No available port found in range ${startPort}-${startPort + maxAttempts - 1}`);
 }
 
-export async function startServer() {
-  const port = await findAvailablePort(DEFAULT_PORT);
-  const server = app.listen(port, () => {
+export async function startServer(preferredPort?: number) {
+  const startPort = preferredPort || DEFAULT_PORT;
+  const port = await findAvailablePort(startPort);
+  app.listen(port, () => {
     console.log(`HTTP Server listening on port ${port}`);
   });
-
-  const wss = new WSServer({ server, path: '/ws' });
-  const wsServer = new WebSocketServer(wss);
-  
-  (global as any).wsServer = wsServer;
-  console.log(`WebSocket Server listening on port ${port}/ws`);
-
-  app.use(express.static(path.join(__dirname, '../../ui/dist')));
-
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || 
-        req.path.startsWith('/conversations') || 
-        req.path.startsWith('/stats') || 
-        req.path.startsWith('/health') ||
-        req.path.startsWith('/message')) {
-      next();
-    } else {
-      const indexPath = path.join(__dirname, '../../ui/dist/index.html');
-      res.sendFile(indexPath, (err) => {
-        if (err) {
-          next();
-        }
-      });
-    }
-  });
-
-  return { port, server, wsServer };
+  return port;
 }
