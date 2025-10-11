@@ -298,23 +298,52 @@ async uninstallApp(appId: string, purgeMemories: boolean = false): Promise<void>
 
 ## Energy Consumption
 
+Memory operations consume energy from the system's energy budget based on actual LLM execution time.
+
 ### Memory Creation
 
-- **Cost**: ~10-15 energy units per memory creation
+- **Cost**: Variable, based on LLM execution time
+  - Energy = (LLM execution time in seconds) × 2
+  - Typically 2-10 energy units depending on model and complexity
 - **Timing**: Async, after conversation ends (doesn't block)
 - **Tracking**: Reported to main loop via `getEnergyConsumedSinceLastPoll()`
+- **Components**:
+  - LLM call to extract key information (variable energy)
+  - Database write operation (negligible energy)
 
 ### Memory Compaction
 
-- **Cost**: ~20-30 energy units per compaction cycle
-- **Timing**: Async, triggered when limit reached
-- **Frequency**: Approximately once per 10 conversations per app
+- **Cost**: Variable, based on LLM execution time
+  - Energy = (LLM execution time in seconds) × 2
+  - Typically 5-20 energy units depending on model and complexity
+- **Timing**: Sync, triggered when memory count > 10
+- **Tracking**: Reported to main loop via `getEnergyConsumedSinceLastPoll()`
+- **Components**:
+  - LLM call to decide which memory to compact (variable energy)
+  - Database update/delete operation (negligible energy)
+
+### Memory Retrieval
+
+- **Cost**: Negligible (~0 energy units)
+  - Simple database query
+  - No LLM involvement
+
+### Energy Tracking Methodology
+
+1. **Measure LLM Time**: Record wall-clock time before and after LLM call
+2. **Convert to Seconds**: `llmTimeSeconds = (endTime - startTime) / 1000`
+3. **Calculate Energy**: `energyUsed = llmTimeSeconds × 2`
+4. **Track Consumption**: Call `trackEnergy(energyUsed)` to accumulate
+5. **Report to Loop**: Main loop polls via `getEnergyConsumedSinceLastPoll()`
+
+This ensures energy consumption accurately reflects actual LLM usage, consistent with the rest of the system.
 
 ### Energy Budget Impact
 
 - Memory operations consume from the global energy budget
-- Low priority: Only runs when energy > 20%
-- Can be deferred if energy is critically low
+- Async memory creation doesn't block conversation flow
+- Sync compaction may briefly pause if triggered during memory creation
+- Total memory energy typically <5% of system energy consumption
 
 ## Error Handling
 

@@ -24,6 +24,7 @@ export class MemorySubAgent {
       
       const prompt = this.buildMemoryCreationPrompt(request);
       
+      const llmStartTime = Date.now();
       const response = await this.intelligentModel.generateResponse(
         [{ role: 'user', content: prompt }],
         this.dummyEnergyRegulator,
@@ -31,6 +32,9 @@ export class MemorySubAgent {
         [],
         []
       );
+      const llmEndTime = Date.now();
+      const llmTimeSeconds = (llmEndTime - llmStartTime) / 1000;
+      const energyUsed = llmTimeSeconds * 2;
       
       const memoryContent = response.content.trim();
       
@@ -46,12 +50,11 @@ export class MemorySubAgent {
         metadata: {}
       });
       
-      const energyUsed = 15;
       this.trackEnergy(energyUsed);
       
       if (this.debugMode) {
         const elapsed = Date.now() - startTime;
-        console.log(`📝 Created memory for app ${request.appId} (${elapsed}ms, ${energyUsed} energy): ${memoryContent.substring(0, 100)}...`);
+        console.log(`📝 Created memory for app ${request.appId} (${elapsed}ms, ${energyUsed.toFixed(1)} energy): ${memoryContent.substring(0, 100)}...`);
       }
       
       const count = this.storage.getMemoryCount(request.appId);
@@ -104,6 +107,7 @@ Create a memory record (2-4 sentences):`;
       
       const prompt = this.buildCompactionPrompt(request);
       
+      const llmStartTime = Date.now();
       const response = await this.intelligentModel.generateResponse(
         [{ role: 'user', content: prompt }],
         this.dummyEnergyRegulator,
@@ -111,6 +115,9 @@ Create a memory record (2-4 sentences):`;
         [],
         []
       );
+      const llmEndTime = Date.now();
+      const llmTimeSeconds = (llmEndTime - llmStartTime) / 1000;
+      const energyUsed = llmTimeSeconds * 2;
       
       const decision = this.parseCompactionDecision(response.content);
       
@@ -122,6 +129,7 @@ Create a memory record (2-4 sentences):`;
         if (oldest) {
           this.storage.deleteMemory(oldest.id);
         }
+        this.trackEnergy(energyUsed);
         return;
       }
       
@@ -129,17 +137,16 @@ Create a memory record (2-4 sentences):`;
         this.storage.deleteMemory(decision.targetMemoryId);
         if (this.debugMode) {
           const elapsed = Date.now() - startTime;
-          console.log(`🗜️  Deleted memory ${decision.targetMemoryId} (${elapsed}ms): ${decision.reason}`);
+          console.log(`🗜️  Deleted memory ${decision.targetMemoryId} (${elapsed}ms, ${energyUsed.toFixed(1)} energy): ${decision.reason}`);
         }
       } else if (decision.action === 'edit' && decision.newContent) {
         this.storage.updateMemory(decision.targetMemoryId, decision.newContent);
         if (this.debugMode) {
           const elapsed = Date.now() - startTime;
-          console.log(`🗜️  Updated memory ${decision.targetMemoryId} (${elapsed}ms): ${decision.reason}`);
+          console.log(`🗜️  Updated memory ${decision.targetMemoryId} (${elapsed}ms, ${energyUsed.toFixed(1)} energy): ${decision.reason}`);
         }
       }
       
-      const energyUsed = 25;
       this.trackEnergy(energyUsed);
       
     } catch (error: any) {
