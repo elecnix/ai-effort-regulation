@@ -791,20 +791,36 @@ export async function startServer() {
   (global as any).wsServer = wsServer;
   console.log(`WebSocket Server listening on port ${port}/ws`);
 
+  // Serve static files for UI
   app.use(express.static(path.join(__dirname, '../../ui/dist')));
 
+  // Catch-all route for SPA - must be last
   app.get('*', (req, res, next) => {
+    // Skip catch-all for API routes
     if (req.path.startsWith('/api') || 
         req.path.startsWith('/conversations') || 
         req.path.startsWith('/stats') || 
         req.path.startsWith('/health') ||
-        req.path.startsWith('/message')) {
+        req.path.startsWith('/message') ||
+        req.path.startsWith('/apps')) {
       next();
     } else {
       const indexPath = path.join(__dirname, '../../ui/dist/index.html');
       res.sendFile(indexPath, (err) => {
         if (err) {
-          next();
+          // If index.html doesn't exist, return API info
+          res.json({
+            name: 'AI Effort Regulation API',
+            version: '1.0.0',
+            documentation: '/api-docs',
+            endpoints: {
+              health: 'GET /health',
+              stats: 'GET /stats',
+              message: 'POST /message',
+              conversations: 'GET /conversations',
+              apps: 'GET /apps'
+            }
+          });
         }
       });
     }

@@ -27,7 +27,7 @@ The energy level represents the AI's "effort quota" - a finite resource that mus
 ## 🏗️ Architecture
 
 ```
-HTTP Server (Port 3002)
+HTTP Server (Port 6740)
     ↓ POST /message
 App Layer (Multi-Channel Architecture)
 ├── Chat App (HTTP conversations)
@@ -55,18 +55,53 @@ Sensitive Loop (Central Decision Engine)
   - **Ollama** (recommended for local/free testing) - Install from [ollama.ai](https://ollama.ai)
   - **OpenRouter** (for production/cloud models) - Get API key from [openrouter.ai](https://openrouter.ai)
 
-### Installation
+### Prerequisites Check (Optional but Recommended)
+
+Before starting, verify your environment is ready:
+
 ```bash
+# Quick check
+node --version  # Should be v18.x.x or higher
+ollama --version  # Should show Ollama version
+curl http://localhost:11434/api/tags  # Should return JSON (Ollama is running)
+```
+
+### Installation
+
+```bash
+# Clone the repository
 git clone https://github.com/elecnix/ai-effort-regulation.git
 cd ai-effort-regulation
+
+# Install dependencies
 npm install
+
+# Build the project
 npm run build
 ```
 
 ### Configuration
 
-Create a `.env` file in the project root:
+**Step 1: Create your environment file**
 
+```bash
+# Copy the example configuration
+cp .env.example .env
+
+# The default configuration works for most users:
+# - Port: 6740
+# - Ollama URL: http://localhost:11434
+# - Energy replenishment: 10/second
+```
+
+**Step 2: Verify your .env file** (optional customization)
+
+```bash
+# Edit if you need to change defaults
+nano .env
+```
+
+**Common configurations:**
 ```bash
 # Required: Ollama configuration (lowest cost option for testing)
 OLLAMA_BASE_URL=http://localhost:11434
@@ -83,22 +118,60 @@ MAX_MESSAGE_LENGTH=10000
 
 **Ollama is the lowest-cost way to test the system** - it runs models locally for free!
 
-1. Install Ollama: https://ollama.ai
-2. Pull the required models:
+**Step 1: Install Ollama**
+- Download from: https://ollama.ai
+- Verify installation: `ollama --version`
+
+**Step 2: Pull required models** (⚠️ Downloads ~3GB, may take 5-10 minutes)
+
 ```bash
-ollama pull llama3.2:1b   # Fast model for low-energy operations
-ollama pull llama3.2:3b   # Better model for high-energy operations
+# Pull the models (required for system to work)
+ollama pull llama3.2:1b   # ~1.3GB - Fast model for low-energy operations
+ollama pull llama3.2:3b   # ~2.0GB - Better model for high-energy operations
+
+# Verify models are installed
+ollama list | grep llama3.2
 ```
 
-3. Start the system:
+**Expected output:**
+```
+llama3.2:1b    1.3 GB    ...
+llama3.2:3b    2.0 GB    ...
+```
+
+**Step 3: Verify your setup** (optional but recommended)
+
+```bash
+# Run the setup verification script
+./verify-setup.sh
+```
+
+This will check:
+- Node.js version
+- Ollama installation and status
+- Required models
+- Configuration files
+- Dependencies
+
+**Step 4: Start the system**
+
 ```bash
 npm start
 ```
 
-The system will start on `http://localhost:6740`:
-- **Monitor UI**: http://localhost:6740/ (Web dashboard)
+**✅ Success! You should see:**
+```
+✅ Environment variables validated
+   OLLAMA_BASE_URL: http://localhost:11434
+   PORT: 6740
+🚀 HTTP Server listening on port 6740
+📊 Monitor UI: http://localhost:6740/
+```
+
+**Access the system:**
+- **Monitor UI (Web Dashboard)**: http://localhost:6740/
 - **REST API**: http://localhost:6740/message, /stats, /conversations, /health
-- **WebSocket**: ws://localhost:6740/ws
+- **WebSocket (Real-time)**: ws://localhost:6740/ws
 
 ### Running with OpenRouter (Cloud Models)
 
@@ -542,6 +615,71 @@ Delete a specific memory.
 - **[HTTP MCP Implementation](./HTTP-MCP-IMPLEMENTATION-SUMMARY.md)**: HTTP transport guide
 - **[MCP Integration Complete](./MCP-INTEGRATION-COMPLETE.md)**: MCP integration summary
 - **[Monitor UI Implementation](./MONITOR-UI-IMPLEMENTATION-PLAN.md)**: Monitor UI implementation details
+
+## 🔧 Troubleshooting
+
+### "Cannot find module" errors
+```bash
+# Solution: Rebuild the project
+npm run build
+```
+
+### "ECONNREFUSED" or "Connection refused" when starting
+```bash
+# Cause: Ollama is not running
+# Solution: Start Ollama
+ollama serve  # or restart the Ollama application
+
+# Verify Ollama is running:
+curl http://localhost:11434/api/tags
+```
+
+### "Model not found" errors
+```bash
+# Cause: Required models not installed
+# Solution: Pull the models
+ollama pull llama3.2:1b
+ollama pull llama3.2:3b
+
+# Verify:
+ollama list | grep llama3.2
+```
+
+### Port already in use (EADDRINUSE)
+```bash
+# Cause: Another process is using port 6740
+# Solution 1: Find and stop the process
+lsof -ti:6740 | xargs kill
+
+# Solution 2: Change port in .env file
+echo "PORT=6741" >> .env
+```
+
+### System starts but no responses
+```bash
+# Check if models are loaded
+ollama list
+
+# Check server logs for errors
+# Look for energy level - if at 0%, system may be energy-depleted
+
+# Try restarting with higher replenishment rate
+node dist/src/index.js --replenish-rate 20
+```
+
+### "Missing required environment variables"
+```bash
+# Cause: .env file not created or missing OLLAMA_BASE_URL
+# Solution: Create .env file
+cp .env.example .env
+```
+
+### Build errors with TypeScript
+```bash
+# Clear build artifacts and rebuild
+rm -rf dist/
+npm run build
+```
 
 ## 🤝 Contributing
 
