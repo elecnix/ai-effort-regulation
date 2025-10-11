@@ -70,7 +70,7 @@ async function main() {
   }
 
   // Start HTTP server
-  startServer();
+  await startServer();
 
   // Start the sensitive loop
   await sensitiveLoop.start(durationSeconds);

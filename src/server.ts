@@ -15,7 +15,7 @@ declare global {
 }
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3005');
+const DEFAULT_PORT = parseInt(process.env.PORT || '6740');
 const MAX_MESSAGE_LENGTH = parseInt(process.env.MAX_MESSAGE_LENGTH || '10000');
 
 // Security: Rate limiting
@@ -226,8 +226,33 @@ app.get('/health', (req, res) => {
   }
 });
 
-export function startServer() {
-  app.listen(PORT, () => {
-    console.log(`HTTP Server listening on port ${PORT}`);
+async function findAvailablePort(startPort: number, maxAttempts: number = 10): Promise<number> {
+  const net = await import('net');
+  
+  for (let i = 0; i < maxAttempts; i++) {
+    const port = startPort + i;
+    const available = await new Promise<boolean>((resolve) => {
+      const server = net.createServer();
+      server.once('error', () => resolve(false));
+      server.once('listening', () => {
+        server.close();
+        resolve(true);
+      });
+      server.listen(port);
+    });
+    
+    if (available) {
+      return port;
+    }
+  }
+  
+  throw new Error(`No available port found in range ${startPort}-${startPort + maxAttempts - 1}`);
+}
+
+export async function startServer() {
+  const port = await findAvailablePort(DEFAULT_PORT);
+  app.listen(port, () => {
+    console.log(`HTTP Server listening on port ${port}`);
   });
+  return port;
 }
