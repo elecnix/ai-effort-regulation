@@ -113,8 +113,8 @@ npm start -- --provider openrouter --model anthropic/claude-3.5-sonnet
 ```
 
 Popular OpenRouter models:
+- `x-ai/grok-4-fast` - Fast and capable (recommended)
 - `anthropic/claude-3.5-sonnet` - High quality, expensive
-- `x-ai/grok-beta` - Fast and capable
 - `meta-llama/llama-3.1-8b-instruct` - Good balance
 - `google/gemini-flash-1.5` - Fast and cheap
 
