@@ -1,5 +1,5 @@
 import { TestClient } from '../framework/TestClient';
-import { TestScenario } from '../framework/types';
+import { TestScenario, ConversationResponse } from '../framework/types';
 
 export const zeroBudgetScenario: TestScenario = {
   name: 'Zero Budget (Last Chance)',
@@ -17,7 +17,7 @@ export const zeroBudgetScenario: TestScenario = {
     console.log(`📨 Sent emergency message with ZERO budget (requestId: ${requestId})`);
     
     // Wait for response (should be quick)
-    let conversation = null;
+    let conversation: ConversationResponse | null = null;
     let attempts = 0;
     const maxAttempts = 60; // 30 seconds max
     

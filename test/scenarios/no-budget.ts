@@ -1,23 +1,23 @@
 import { TestClient } from '../framework/TestClient';
-import { TestScenario } from '../framework/types';
+import { TestScenario, ConversationResponse } from '../framework/types';
 
 export const noBudgetScenario: TestScenario = {
-  name: 'No Budget (Default Behavior)',
-  description: 'User sends message without energy budget - AI uses default energy management',
+  name: 'No Budget',
+  description: 'Test conversation without any energy budget constraints',
   
-  async run(client: TestClient): Promise<boolean> {
-    console.log('\n🧪 Testing No Budget Scenario...');
+  run: async (client: TestClient): Promise<boolean> => {
+    console.log('\n🧪 Testing: No Budget Scenario');
+    console.log('Expected: Conversation proceeds normally without budget constraints');
     
-    // Send message without budget
+    // Send a message without any budget
     const requestId = await client.sendMessage(
-      'What are some interesting facts about quantum computing?'
-      // No budget parameter
+      'What is the capital of France?'
     );
     
-    console.log(`📨 Sent message WITHOUT budget (requestId: ${requestId})`);
+    console.log(`📤 Sent message with requestId: ${requestId}`);
     
-    // Wait for response
-    let conversation = null;
+    // Wait for response with timeout
+    let conversation: ConversationResponse | null = null;
     let attempts = 0;
     const maxAttempts = 60;
     

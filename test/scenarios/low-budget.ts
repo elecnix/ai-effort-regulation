@@ -1,5 +1,5 @@
 import { TestClient } from '../framework/TestClient';
-import { TestScenario } from '../framework/types';
+import { TestScenario, ConversationResponse } from '../framework/types';
 
 export const lowBudgetScenario: TestScenario = {
   name: 'Low Budget (5 units)',
@@ -19,7 +19,7 @@ export const lowBudgetScenario: TestScenario = {
     console.log(`📨 Sent simple question with budget of ${budget} units (requestId: ${requestId})`);
     
     // Wait for response
-    let conversation = null;
+    let conversation: ConversationResponse | null = null;
     let attempts = 0;
     const maxAttempts = 60;
     

@@ -279,7 +279,7 @@ app.post('/conversations/:requestId/approve', function(req: express.Request, res
     
     // Apply budget changes if specified
     let budgetUpdated = false;
-    let finalBudget = null;
+    let finalBudget: number | null = null;
     
     if (newBudget !== undefined && newBudget !== null) {
       if (typeof newBudget === 'number' && newBudget >= 0) {
