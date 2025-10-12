@@ -21,7 +21,8 @@ function App() {
     current: 100,
     max: 100,
     min: -50,
-    status: 'high' as const
+    status: 'high' as const,
+    targetEnergy: undefined as number | undefined
   });
   const [events, setEvents] = useState<WebSocketMessage[]>([]);
 
@@ -42,12 +43,35 @@ function App() {
 
   useEffect(() => {
     const unsubscribe = ws.on('energy_update', (payload) => {
-      setEnergy({
+      setEnergy(prev => ({
         current: payload.current,
         max: payload.max,
         min: payload.min,
-        status: payload.status
-      });
+        status: payload.status,
+        targetEnergy: prev.targetEnergy
+      }));
+    });
+
+    return unsubscribe;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsubscribe = ws.on('sleep_start', (payload) => {
+      setEnergy(prev => ({
+        ...prev,
+        targetEnergy: payload.targetEnergy
+      }));
+    });
+
+    return unsubscribe;
+  }, [ws]);
+
+  useEffect(() => {
+    const unsubscribe = ws.on('sleep_end', () => {
+      setEnergy(prev => ({
+        ...prev,
+        targetEnergy: undefined
+      }));
     });
 
     return unsubscribe;

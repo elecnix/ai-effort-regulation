@@ -66,8 +66,32 @@ export class EnergyRegulator {
       console.log(`⚠️ Critical energy (${this.energy}) - forced recovery sleep to 100%`);
       effectiveTarget = this.maxEnergy;
     }
+    
+    const startEnergy = this.energy;
     console.log(`💤 Awaiting ${effectiveTarget}% energy`);
+    
+    // Broadcast sleep start with target energy
+    const globalLoop = global as any;
+    if (globalLoop.eventBridge) {
+      globalLoop.eventBridge.broadcastSleepStart(
+        `Sleeping to reach ${effectiveTarget}% energy`,
+        this.energy,
+        sleepTime,
+        effectiveTarget
+      );
+    }
+    
     await this.sleep(sleepTime);
+    
+    // Broadcast sleep end
+    if (globalLoop.eventBridge) {
+      globalLoop.eventBridge.broadcastSleepEnd(
+        sleepTime,
+        this.energy - startEnergy,
+        this.energy
+      );
+    }
+    
     return true;
   }
 

@@ -191,7 +191,9 @@ export class EventBridge {
         this.wsServer.sendToClient(clientId, {
           type: 'system_stats',
           payload: {
-            ...stats,
+            totalConversations: stats.total_conversations,
+            totalResponses: stats.total_responses,
+            avgEnergyLevel: stats.avg_energy_level,
             currentEnergy,
             uptime: process.uptime()
           },
@@ -243,7 +245,9 @@ export class EventBridge {
         this.wsServer.broadcast({
           type: 'system_stats',
           payload: {
-            ...stats,
+            totalConversations: stats.total_conversations,
+            totalResponses: stats.total_responses,
+            avgEnergyLevel: stats.avg_energy_level,
             currentEnergy,
             uptime: process.uptime()
           },
@@ -328,13 +332,14 @@ export class EventBridge {
     });
   }
 
-  public broadcastSleepStart(reason: string, energyLevel: number, expectedDuration: number): void {
+  public broadcastSleepStart(reason: string, energyLevel: number, expectedDuration: number, targetEnergy: number): void {
     this.wsServer.broadcast({
       type: 'sleep_start',
       payload: {
         reason,
         energyLevel,
-        expectedDuration
+        expectedDuration,
+        targetEnergy
       },
       timestamp: new Date().toISOString()
     });

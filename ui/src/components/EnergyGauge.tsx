@@ -5,10 +5,12 @@ interface EnergyGaugeProps {
   max: number;
   min: number;
   status: 'high' | 'medium' | 'low' | 'urgent';
+  targetEnergy?: number;
 }
 
-export function EnergyGauge({ current, max, status }: EnergyGaugeProps) {
+export function EnergyGauge({ current, max, status, targetEnergy }: EnergyGaugeProps) {
   const percentage = Math.round(Math.min(100, Math.max(0, current)));
+  const targetPercentage = targetEnergy !== undefined ? Math.round(Math.min(100, Math.max(0, targetEnergy))) : undefined;
   
   const getColor = () => {
     if (status === 'high') return 'text-green-500';
@@ -41,14 +43,23 @@ export function EnergyGauge({ current, max, status }: EnergyGaugeProps) {
           <span className="font-medium">Energy</span>
           <span className={getColor()}>{percentage}%</span>
         </div>
-        <div className="h-2 bg-secondary rounded-full overflow-hidden">
+        <div className="h-2 bg-secondary rounded-full overflow-hidden relative">
+          {targetPercentage !== undefined && targetPercentage > percentage && (
+            <div 
+              className="h-full bg-gray-400 dark:bg-gray-600 absolute left-0 top-0 opacity-30"
+              style={{ width: `${targetPercentage}%` }}
+            />
+          )}
           <div 
-            className={`h-full ${getBgColor()} transition-all duration-300`}
+            className={`h-full ${getBgColor()} transition-all duration-300 relative z-10`}
             style={{ width: `${percentage}%` }}
           />
         </div>
         <div className="text-xs text-muted-foreground mt-1">
           {current.toFixed(0)} / {max}
+          {targetPercentage !== undefined && (
+            <span className="ml-2 text-gray-500">→ {targetPercentage}%</span>
+          )}
         </div>
       </div>
     </div>
