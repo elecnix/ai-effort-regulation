@@ -49,6 +49,7 @@ export interface SleepStart {
   reason: string;
   energyLevel: number;
   expectedDuration: number;
+  targetEnergy: number;
 }
 
 export interface SleepEnd {

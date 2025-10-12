@@ -1,6 +1,6 @@
 {
-  "models": ["llama3.2:1b", "llama3.2:3b"],
-  "defaultModel": "llama3.2:1b",
+  "models": ["llama2:7b"],
+  "defaultModel": "llama2:7b",
   "serverUrl": "http://localhost:6740",
   "energyTargets": {
     "convergence": 25,

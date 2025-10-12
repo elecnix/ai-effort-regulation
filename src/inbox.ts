@@ -13,11 +13,14 @@ export interface ConversationData {
   responses: Array<{
     timestamp: string;
     content: string;
+    energyLevel: number;
     modelUsed: string;
   }>;
   metadata: {
     totalEnergyConsumed: number;
     sleepCycles: number;
+    createdAt: string;
+    snoozedUntil?: string | null;
     energyBudget?: number | null;
     energyBudgetRemaining?: number | null;
     budgetStatus?: 'within' | 'exceeded' | 'depleted';
@@ -363,7 +366,7 @@ export class Inbox {
         requestId: conversation.request_id,
         inputMessage: conversation.input_message,
         responses: responses.map((r: any) => ({
-          timestamp: r.timestamp,
+          timestamp: new Date(r.timestamp).toISOString(),
           content: r.content,
           energyLevel: r.energy_level,
           modelUsed: r.model_used
@@ -371,6 +374,8 @@ export class Inbox {
         metadata: {
           totalEnergyConsumed: conversation.total_energy_consumed,
           sleepCycles: conversation.sleep_cycles,
+          createdAt: new Date(conversation.created_at).toISOString(),
+          snoozedUntil: conversation.snooze_until ? new Date(conversation.snooze_until).toISOString() : null,
           ...budgetInfo
         },
         ended: conversation.ended,

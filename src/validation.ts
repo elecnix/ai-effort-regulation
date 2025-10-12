@@ -119,26 +119,15 @@ export function validatePathParams(rules: ValidationRule[]) {
 }
 
 export function validateEnvVariables() {
-  const required = [
-    'OLLAMA_BASE_URL'
-  ];
-
-  const optional = [
-    'PORT',
-    'MAX_MESSAGE_LENGTH',
-    'INBOX_DB_PATH',
-    'NODE_ENV',
-    'OPENROUTER_API_KEY'
-  ];
-
-  const missing: string[] = [];
-  const warnings: string[] = [];
-
-  for (const varName of required) {
-    if (!process.env[varName]) {
-      missing.push(varName);
-    }
+  // Set defaults for optional environment variables
+  if (!process.env.OLLAMA_BASE_URL) {
+    process.env.OLLAMA_BASE_URL = 'http://localhost:11434';
   }
+  if (!process.env.PORT) {
+    process.env.PORT = '6740';
+  }
+
+  const warnings: string[] = [];
 
   // Check for common misconfigurations
   if (process.env.OLLAMA_BASE_URL && !process.env.OLLAMA_BASE_URL.startsWith('http')) {
@@ -152,16 +141,6 @@ export function validateEnvVariables() {
     }
   }
 
-  if (missing.length > 0) {
-    console.error('❌ Missing required environment variables:');
-    missing.forEach(v => console.error(`   - ${v}`));
-    console.error('\nPlease set these variables in your .env file or environment.');
-    console.error('\nExample .env file:');
-    console.error('OLLAMA_BASE_URL=http://localhost:11434');
-    console.error('PORT=6740');
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
-  }
-
   if (warnings.length > 0) {
     console.warn('⚠️  Environment variable warnings:');
     warnings.forEach(w => console.warn(`   - ${w}`));
@@ -169,7 +148,7 @@ export function validateEnvVariables() {
 
   console.log('✅ Environment variables validated');
   console.log(`   OLLAMA_BASE_URL: ${process.env.OLLAMA_BASE_URL}`);
-  console.log(`   PORT: ${process.env.PORT || '6740 (default)'}`);
+  console.log(`   PORT: ${process.env.PORT}`);
   if (process.env.OPENROUTER_API_KEY) {
     console.log('   OPENROUTER_API_KEY: ***configured***');
   } else {
