@@ -28,9 +28,7 @@ export class IntelligentModel {
   private currentModel: string;
   // Start with estimates of energy consumption
   private readonly modelConsumption: Array<{ energyPerPrompt: number; model: string }> = [
-    { energyPerPrompt: 1, model: 'llama3.2:1b' }, // Low energy cost model (supports tools)
-    { energyPerPrompt: 3, model: 'llama3.2:3b' }, // Medium energy cost model (supports tools)
-    { energyPerPrompt: 5, model: 'llama3.2:3b' } // High energy cost model (same model but more complex tasks)
+    { energyPerPrompt: 2, model: 'llama2:7b' }, // Single 8GB model for all energy levels
   ];
   private requestStats: Map<string, {energy: number}[]> = new Map();
 
@@ -146,16 +144,9 @@ export class IntelligentModel {
    * Get the appropriate model for a given energy level
    */
   private getModelForEnergy(energy: number): string {
-    // Find the most expensive model we can afford (highest energyPerPrompt that energy meets)
-    for (let i = this.modelConsumption.length - 1; i >= 0; i--) {
-      const threshold = this.modelConsumption[i];
-      if (threshold && energy >= threshold.energyPerPrompt) {
-        return threshold.model;
-      }
-    }
-    // Fallback to first model if no threshold matches
+    // Since we're using a single model, always return it regardless of energy
     const firstThreshold = this.modelConsumption[0];
-    return firstThreshold ? firstThreshold.model : 'llama3.2:1b';
+    return firstThreshold ? firstThreshold.model : 'llama2:7b';
   }
 
   private getEnergyConsumption(model: string): number {
