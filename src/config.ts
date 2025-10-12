@@ -4,9 +4,8 @@ export class LLMConfig {
    * This is used for backward compatibility with the existing energy-based model switching
    */
   static getOllamaModel(model: string): string {
-    // Use llama3.2:1b for small, efficient model that supports tools
-    // This is the smallest model that supports function calling
-    return 'llama3.2:1b';
+    // Use llama3.1:8b for all energy levels
+    return 'llama3.1:8b';
   }
 
   /**

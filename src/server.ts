@@ -685,6 +685,7 @@ app.get('/health', (req, res) => {
   const globalLoop = global.sensitiveLoop;
   const currentEnergy = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getEnergy() : 0;
   const energyStatus = globalLoop && globalLoop.energyRegulator ? globalLoop.energyRegulator.getStatus() : 'unknown';
+  const replenishRate = parseFloat(process.env.ENERGY_REPLENISH_RATE || '1');
   
   // Test database connectivity
   let dbConnected = false;
@@ -726,7 +727,8 @@ app.get('/health', (req, res) => {
     energy: {
       current: Math.round(currentEnergy * 10) / 10,
       percentage: Math.round(Math.min(100, Math.max(0, currentEnergy))),
-      status: energyStatus
+      status: energyStatus,
+      replenishRate: replenishRate
     },
     database: {
       connected: dbConnected,
@@ -778,6 +780,41 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
   throw new Error(`No available port found in range ${startPort}-${startPort + maxAttempts - 1}`);
 }
 
+// Serve static files for UI - must be before catch-all but after API routes
+app.use(express.static(path.join(__dirname, '../../ui/dist')));
+
+// Catch-all route for SPA - must be last
+app.get('*', (req, res, next) => {
+  // Skip catch-all for API routes
+  if (req.path.startsWith('/api') || 
+      req.path.startsWith('/conversations') || 
+      req.path.startsWith('/stats') || 
+      req.path.startsWith('/health') ||
+      req.path.startsWith('/message') ||
+      req.path.startsWith('/apps')) {
+    next();
+  } else {
+    const indexPath = path.join(__dirname, '../../ui/dist/index.html');
+    res.sendFile(indexPath, (err) => {
+      if (err) {
+        // If index.html doesn't exist, return API info
+        res.json({
+          name: 'AI Effort Regulation API',
+          version: '1.0.0',
+          documentation: '/api-docs',
+          endpoints: {
+            health: 'GET /health',
+            stats: 'GET /stats',
+            message: 'POST /message',
+            conversations: 'GET /conversations',
+            apps: 'GET /apps'
+          }
+        });
+      }
+    });
+  }
+});
+
 export async function startServer() {
   const port = await findAvailablePort(DEFAULT_PORT);
   const server = app.listen(port, () => {
@@ -790,41 +827,6 @@ export async function startServer() {
   (global as any).httpServer = server;
   (global as any).wsServer = wsServer;
   console.log(`WebSocket Server listening on port ${port}/ws`);
-
-  // Serve static files for UI
-  app.use(express.static(path.join(__dirname, '../../ui/dist')));
-
-  // Catch-all route for SPA - must be last
-  app.get('*', (req, res, next) => {
-    // Skip catch-all for API routes
-    if (req.path.startsWith('/api') || 
-        req.path.startsWith('/conversations') || 
-        req.path.startsWith('/stats') || 
-        req.path.startsWith('/health') ||
-        req.path.startsWith('/message') ||
-        req.path.startsWith('/apps')) {
-      next();
-    } else {
-      const indexPath = path.join(__dirname, '../../ui/dist/index.html');
-      res.sendFile(indexPath, (err) => {
-        if (err) {
-          // If index.html doesn't exist, return API info
-          res.json({
-            name: 'AI Effort Regulation API',
-            version: '1.0.0',
-            documentation: '/api-docs',
-            endpoints: {
-              health: 'GET /health',
-              stats: 'GET /stats',
-              message: 'POST /message',
-              conversations: 'GET /conversations',
-              apps: 'GET /apps'
-            }
-          });
-        }
-      });
-    }
-  });
 
   return { port, server, wsServer };
 }
